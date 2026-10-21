@@ -1,0 +1,50 @@
+{
+  "source_id": "reference-layout-example",
+  "number": "0260-10-2026",
+  "revision": 1,
+  "documentType": "Sales Quotation",
+  "date": "2026-10-15",
+  "validityDays": 14,
+  "deliveryDays": 14,
+  "currency": "UGX",
+  "taxRate": "18.00",
+  "taxMode": "inclusive",
+  "discount": "0.00",
+  "company": {
+    "tradingName": "NAVAPACK SOLUTIONS",
+    "legalName": "Nova Recycling Industries Ltd",
+    "address": "Plot 22, Ring Road\nNalukolongo Industrial Area\nKampala",
+    "telephone": "0753349228",
+    "email": "novarecyclingindltd@gmail.com",
+    "tin": "1017362107",
+    "signatory": "",
+    "banks": [
+      {"bank": "DFCU Bank", "branch": "Ndeeba Branch", "accountName": "Nova Recycling Industries Ltd.", "accountNumber": "01450016576735", "currency": "UGX"},
+      {"bank": "Diamond Trust Bank", "branch": "Ndeeba Branch", "accountName": "Nova Recycling Industries Ltd.", "accountNumber": "0272021001", "currency": "UGX"}
+    ]
+  },
+  "customer": {
+    "name": "Fraine Supermarket",
+    "billingAddress": "Ntinda",
+    "deliveryAddress": "Ntinda",
+    "contactPerson": "Ms Sarah",
+    "telephone": "+91 6282744675",
+    "email": "",
+    "tin": ""
+  },
+  "terms": {
+    "priceValidity": "14 days from the date of quotation, subject to change based on prevailing exchange rate and material prices.",
+    "deliveryPeriod": "14 days",
+    "paymentTerms": "30 days credit",
+    "revisionClause": "",
+    "additionalTerms": "",
+    "remarks": "",
+    "quantityTolerance": "10.00"
+  },
+  "lines": [
+    {"group": "", "description": "White Carrier Bags in assorted sizes", "specifications": "Size: #12, #15, #22, #25, #28.", "quantity": "100", "unit": "Kg", "unitPrice": "12000"},
+    {"group": "Garbage Bags", "description": "Black_30x36", "specifications": "", "quantity": "1", "unit": "ctn", "unitPrice": "152000"},
+    {"group": "", "description": "Brown_30x36", "specifications": "", "quantity": "1", "unit": "ctn", "unitPrice": "171000"},
+    {"group": "", "description": "Black_30x46", "specifications": "", "quantity": "1", "unit": "ctn", "unitPrice": "194000"}
+  ]
+}

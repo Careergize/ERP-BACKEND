@@ -1,0 +1,9 @@
+Django==5.2.18
+djangorestframework==3.16.1
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.9.0
+python-dotenv==1.2.4
+psycopg[binary]==3.3.6
+reportlab==4.5.1
+requests==2.34.2
+num2words==0.5.14
