@@ -73,6 +73,8 @@ def build_pdf(document, approved=False):
     for label, key in [('Subtotal (entered price basis)', 'subtotal'), ('Discount (entered price basis)', 'discount'), ('Taxable amount', 'taxableAmount'), (f"VAT {d['taxRate']}% ({d['taxMode']} pricing)", 'tax'), (f"Total Amount inclusive VAT {d['taxRate']}%", 'total')]:
         summary.append(table([[p(label, bold if key == 'total' else normal), p(f"{Decimal(totals[key]):,.2f}", right)]], [width * .79, width * .21]))
     total = Decimal(totals['total'])
+    if totals.get('led'):
+        summary.insert(-1, table([[p('LED', normal), p(f"{Decimal(totals['led']):,.2f}", right)]], [width * .79, width * .21]))
     whole = int(total)
     cents = int((total - whole) * 100)
     words = num2words(whole).capitalize() + (f' and {cents:02d}/100' if cents else '') + f" {d['currency']} only."

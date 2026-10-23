@@ -1,5 +1,44 @@
 # Quotation PDF and delivery
 
+## Quotation-first orders and Sales Order approval — 23 October 2026
+
+Current flow: saved Quotation → Sales Order awaiting approval → Production Manager
+or Admin approval → automatic manufacturing Job Card and planned costing sheet.
+This replaces the earlier order-first automatic quotation/allocation behavior.
+The existing quotation review and customer-response UI still precedes conversion.
+Manual selling prices may be entered without a preliminary costing estimate;
+linked estimates retain their approval/model checks. Job Card costing is reviewed
+after creation, before production approval and Store material issue.
+
+New orders must identify an exact saved quotation revision and retain its lines,
+prices, units, customer, tax/discount and LED snapshot. Direct order creation is
+rejected by the API. Order approval is persisted with actor/time, limited to
+Production Manager/Admin, atomic with job creation and safe to retry. Stock-only
+orders create no Job Card. Existing-item manufacture still requires known zero
+stock, rechecked at approval. Standalone manual production Job Cards remain allowed.
+
+Sales Orders offers “Start with quotation”; the old new-order route opens Quotations.
+Stock OUT new-sale entry saves a quotation first. Dispatch against an existing
+order requires Sales Order approval. Finished-goods dispatch remains browser-session
+state; this change does not add database persistence to dispatch or customer responses.
+Migration erp.0015 grants the Sales Order approval permission to PM/Admin roles.
+
+
+## Previous order-origin quotations (superseded) — 23 October 2026
+
+Creating a direct `/api/production-workflow/orders/` order also creates one editable
+QuotationDraft atomically. Orders return generatedQuotationId/generatedQuotationNumber;
+the draft retains salesOrderId and exact saved commercial lines. Same order retries
+return the existing document; quotation-origin conversions do not create a second one.
+Optional quotationTemplate contains company and validityDays; absent configuration
+uses existing Navapack identity/banks and the supplied template's commercial defaults.
+Review before sending: no implicit approval, signature, delivery or stock action.
+LED input/snapshots survive draft restore, and public PDF totals retain LED/VAT.
+Migration 0006 grants Receptionist/Admin quotation view/add. Thirty-seven combined
+workflow/quotation tests pass on SQLite, including totals, rollback and retry behavior.
+The existing PDF template was rendered and visually verified. No remote deployment
+or external sending was performed; older orders are not backfilled.
+
 ## Persistent editable drafts — 16 October 2026
 
 Real-user **Save Draft** now POSTs `/api/quotation-drafts/` and waits for database confirmation. Django Admin → Quotations → Quotation drafts displays the saved records; they are read-only in admin so editing follows the API's version/freeze rules. The existing Quotation model remains the immutable PDF/manager decision snapshot. Creating a blank editor is not itself a database save; click Save Draft. Demo login still stores drafts only in memory and is labeled accordingly.

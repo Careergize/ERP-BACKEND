@@ -49,7 +49,14 @@ class TermsSerializer(serializers.Serializer):
     quantityTolerance = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, required=False)
 
 
+class LevySerializer(serializers.Serializer):
+    method = serializers.CharField(max_length=100, required=False)
+    selectedAmount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=0)
+    vatOnLED = serializers.BooleanField(default=False)
+
+
 class LineSerializer(serializers.Serializer):
+    led = LevySerializer(required=False, allow_null=True)
     unit_id = serializers.IntegerField(min_value=1, required=False)
     description = serializers.CharField(max_length=2000)
     group = serializers.CharField(max_length=200, allow_blank=True)
@@ -106,6 +113,22 @@ class DocumentSerializer(serializers.Serializer):
         net = money(basis / (1 + rate)) if data['taxMode'] == 'inclusive' else basis
         tax = money(basis - net) if data['taxMode'] == 'inclusive' else money(net * rate)
         data['totals'] = {'subtotal': str(subtotal), 'discount': str(data['discount']), 'taxableAmount': str(net), 'tax': str(tax), 'total': str(basis if data['taxMode'] == 'inclusive' else money(net + tax))}
+        levy = Decimal(0)
+        levy_tax = Decimal(0)
+        for line in data['lines']:
+            snapshot = line.get('ledSnapshot') or line.get('led') or {}
+            if not isinstance(snapshot, dict):
+                raise serializers.ValidationError('LED must contain a valid snapshot.')
+            if snapshot.get('applies') and snapshot.get('selectedAmount') is None:
+                raise serializers.ValidationError('LED requires an applied snapshot.')
+            if snapshot.get('selectedAmount') is not None:
+                amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=0).run_validation(snapshot['selectedAmount'])
+                levy += amount
+                if snapshot.get('vatOnLED'):
+                    levy_tax += amount * rate
+        if levy:
+            taxable_levy = sum((money((line.get('ledSnapshot') or line.get('led') or {}).get('selectedAmount', 0)) for line in data['lines'] if (line.get('ledSnapshot') or line.get('led') or {}).get('vatOnLED')), Decimal(0))
+            data['totals'].update(led=str(money(levy)), ledTax=str(money(levy_tax)), taxableAmount=str(money(net + taxable_levy)), tax=str(money(tax + levy_tax)), total=str(money(Decimal(data['totals']['total']) + levy + money(levy_tax))))
         data['validUntil'] = data['date'] + timedelta(days=data['validityDays'])
         return data
 

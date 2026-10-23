@@ -1,5 +1,63 @@
 # Navapack ERP backend
 
+## Quotation-first orders and Sales Order approval — 23 October 2026
+
+Current flow: saved Quotation → Sales Order awaiting approval → Production Manager
+or Admin approval → automatic manufacturing Job Card and planned costing sheet.
+This replaces the earlier order-first automatic quotation/allocation behavior.
+The existing quotation review and customer-response UI still precedes conversion.
+Manual selling prices may be entered without a preliminary costing estimate;
+linked estimates retain their approval/model checks. Job Card costing is reviewed
+after creation, before production approval and Store material issue.
+
+New orders must identify an exact saved quotation revision and retain its lines,
+prices, units, customer, tax/discount and LED snapshot. Direct order creation is
+rejected by the API. Order approval is persisted with actor/time, limited to
+Production Manager/Admin, atomic with job creation and safe to retry. Stock-only
+orders create no Job Card. Existing-item manufacture still requires known zero
+stock, rechecked at approval. Standalone manual production Job Cards remain allowed.
+
+Sales Orders offers “Start with quotation”; the old new-order route opens Quotations.
+Stock OUT new-sale entry saves a quotation first. Dispatch against an existing
+order requires Sales Order approval. Finished-goods dispatch remains browser-session
+state; this change does not add database persistence to dispatch or customer responses.
+Migration erp.0015 grants the Sales Order approval permission to PM/Admin roles.
+
+## Persisted planned costing after Job Card creation — 23 October 2026
+
+Every new workflow manufacturing item includes a plannedCosting draft generated
+from its saved model requirements and route. Missing prices/rates remain incomplete.
+POST jobs/{key}/costing/ accepts expectedVersion, itemId, optional input and
+expectedCostingRevision; Sales/Accounts/PM/Admin editors with job view permission
+can prepare it. POST jobs/{key}/approve-costing/ requires PM approval authority.
+New Job Card approval requires all item costing sheets approved; corrections to
+materials/routing invalidate that review. Costing locks once the Job Card is approved.
+Revision history, actor/time and optimistic concurrency are saved in existing job
+JSON. Pending legacy jobs may initialize costing explicitly; approved history is kept.
+No migration is needed. Actual final cost remains pending actual production inputs.
+
+Calculations use exact material units, explicit purchase currencies/FX, correct
+inclusive-VAT removal, process costs and overheads, four markup scenarios and
+conditional Higher-of-the-Two LED with declared weight/base/dated FX. No default
+waste or contradictory workbook overhead amount is adopted. Thirty-nine workflow/
+quotation tests, Django checks and drift checks pass on SQLite; PostgreSQL concurrency
+and browser print behavior have not been verified.
+
+POST `/api/production-workflow/jobs/` creates a manual production-for-stock Job Card
+without a Sales Order using existing Receptionist/Admin order-allocation permission.
+Supply creationKey UUID, itemName, quantity, unit, modelId/modelRevision, requiredDate
+and optional itemId/specifications/jobRouting. Model recipe and zero-stock rules apply;
+PM review and Store issue use existing actions. Same-key retries return the saved job;
+changed details conflict. Apply migration 0014 for nullable order and unique manual
+request ID. Fourteen workflow tests and Django/migration checks pass on SQLite.
+
+Existing-item manufacturing requires known zero persisted finished-goods stock
+(opening balance plus purchase/GRN receipts). Checked on order creation and deferred
+Job Card allocation; custom manual products still require a saved production model.
+The Job Card uses the full ordered quantity. Browser-only finished-goods movements
+and reservations are not part of this server balance. Twelve workflow tests, Django
+checks and migration drift checks pass on SQLite for this rule.
+
 ## Shared direct Sales Order production workflow
 
 `/api/production-workflow/` provides processes/, models/, orders/, jobs/ and

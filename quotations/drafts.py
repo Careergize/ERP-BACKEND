@@ -19,6 +19,8 @@ class DraftCompanySerializer(CompanySerializer):
 
 
 class DraftLineSerializer(LineSerializer):
+    led = serializers.JSONField(required=False)
+    ledSnapshot = serializers.JSONField(required=False)
     id = serializers.UUIDField()
     type = serializers.ChoiceField(choices=['stock', 'custom'])
     productId = serializers.CharField(max_length=100, required=False)
@@ -38,6 +40,7 @@ class DraftLineSerializer(LineSerializer):
 
 
 class DraftContentSerializer(DocumentSerializer):
+    salesOrderId = serializers.CharField(max_length=100, required=False)
     source_id = None
     customer_id = None
     id = serializers.UUIDField()

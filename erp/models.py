@@ -198,9 +198,13 @@ class WorkflowOrder(Record):
     data = models.JSONField()
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
 
+    class Meta(Record.Meta):
+        permissions = [('approve_workfloworder', 'Can approve Sales Orders and allocate manufacturing Job Cards')]
+
 
 class WorkflowJob(Record):
-    order = models.OneToOneField(WorkflowOrder, on_delete=models.PROTECT, related_name='workflow_job')
+    order = models.OneToOneField(WorkflowOrder, on_delete=models.PROTECT, related_name='workflow_job', null=True, blank=True)
+    request_id = models.UUIDField(unique=True, null=True, blank=True, editable=False)
     data = models.JSONField()
     version = models.PositiveIntegerField(default=1)
 

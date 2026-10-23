@@ -11,7 +11,8 @@ from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from inventory.models import RawMaterial, RawMovement
-from .models import ProductionMachine, ProductionProcess, ProductionModelRevision, WorkflowOrder, WorkflowJob, FinishedStockItem, Customer
+from .models import ProductionMachine, ProductionProcess, ProductionModelRevision, WorkflowOrder, WorkflowJob, FinishedStockItem, Customer, PurchaseOrderLine, GoodsReceivedLine
+from .job_costing import new_sheet, recalculate, validate_scope
 
 
 def fail(message):
@@ -111,17 +112,35 @@ def requirements(model, item):
     return result
 
 
-def allocate(order, user):
-    existing = WorkflowJob.objects.filter(order=order).first()
+def validate_existing_manufacturing_item(item):
+    if not item.get('itemId'):
+        return
+    product = FinishedStockItem.objects.select_for_update().filter(pk=item['itemId']).first()
+    if not product or product.unit != item.get('unit'):
+        fail('Select the exact existing finished-goods variant and unit.')
+    if product.opening_stock is None:
+        fail('Confirm a zero stock balance before manufacturing an existing item with unrecorded stock.')
+    balance = product.opening_stock
+    balance += sum((line.quantity for line in PurchaseOrderLine.objects.filter(stock_item=product, stock_posted=True)), Decimal(0))
+    balance += sum((line.quantity_received - line.damaged_quantity for line in GoodsReceivedLine.objects.filter(purchase_line__stock_item=product)), Decimal(0))
+    if balance != 0:
+        fail('Existing items can be manufactured only when available stock is zero. Use existing stock for this item.')
+
+
+def allocate(order, user, source=None, request_id=None):
+    existing = WorkflowJob.objects.filter(order=order).first() if order else None
     if existing:
         return existing
-    source = order.data
+    if order and not order.data.get('salesOrderApproval'):
+        fail('Approve the Sales Order before creating its linked Job Card.')
+    source = order.data if order else source
     manufacturing = [line for line in source['items'] if line['fulfillmentSource'] == 'manufacturing']
     if not manufacturing:
         fail('Stock-only Sales Orders do not need a Job Card.')
     parent_id = 'wf-job-' + str(uuid4())
     children = []
     for item in manufacturing:
+        validate_existing_manufacturing_item(item)
         revision = ProductionModelRevision.objects.filter(model_id=item.get('modelId'), revision=item.get('modelRevision')).first()
         if not revision:
             fail('Save a configured production model revision before allocating the Job Card.')
@@ -138,7 +157,8 @@ def allocate(order, user):
         if dated(due) < dated(source['date']):
             fail('Manufacturing items need delivery dates on or after the Sales Order date.')
         children.append({'id': 'wf-item-' + str(uuid4()), 'parentJobCardId': parent_id, 'jobCardNumber': '',
-                         'salesOrderId': source['id'], 'salesOrderItemId': item['id'], 'salesOrderNumber': source['orderNumber'],
+                         **({'salesOrderId': source['id'], 'salesOrderItemId': item['id'], 'salesOrderNumber': source['orderNumber']} if order else {'origin': 'production_for_stock'}),
+                         **({'finishedProductId': item['itemId']} if item.get('itemId') else {}),
                          'customerName': source['customerName'], 'product': item['itemName'], 'modelId': revision.model_id,
                          'modelRevision': revision.revision, 'modelName': model['name'], 'qty': item['quantity'], 'unit': item['unit'],
                          'requiredDate': due, 'createdDate': timezone.localdate().isoformat(), 'specifications': item.get('specifications', ''),
@@ -146,18 +166,21 @@ def allocate(order, user):
                          'status': 'PendingApproval', 'department': 'Production Manager', 'stages': [], 'productionStages': stages,
                          'requiredMaterials': materials, 'routingRevision': 1, 'persistedWorkflow': True,
                          'activityHistory': [event(user, 'Job Card allocated', 'Production Manager', 'Model process steps and scaled material requirements submitted for review.')]})
-    job = WorkflowJob.objects.create(order=order, data={})
+        children[-1]['plannedCosting'] = new_sheet(children[-1], model, item=item, tax_rate=source.get('taxRate'))
+    job = WorkflowJob.objects.create(order=order, request_id=request_id, data={})
     job_number = f'JC-W{job.pk:05d}'
     for child in children:
         child['jobCardNumber'] = job_number
         child['workflowKey'] = job.pk
-    job.data = {'id': parent_id, 'jobCardNumber': job_number, 'origin': 'sales_order', 'salesOrderId': source['id'],
-                'salesOrderNumber': source['orderNumber'], 'customerName': source['customerName'], 'modelName': 'Manufacturing items',
+    job.data = {'id': parent_id, 'jobCardNumber': job_number, 'origin': 'sales_order' if order else 'production_for_stock',
+                **({'salesOrderId': source['id'], 'salesOrderNumber': source['orderNumber']} if order else {}),
+                'customerName': source['customerName'], 'modelName': 'Manufacturing items',
                 'qty': 0, 'status': 'PendingApproval', 'department': 'Production Manager', 'stages': [], 'manufacturingItems': children,
                 'persistedWorkflow': True, 'workflowKey': job.pk, 'workflowVersion': 1, 'createdDate': timezone.localdate().isoformat(),
                 'requiredDate': min(child['requiredDate'] for child in children), 'activityHistory': []}
     job.save(update_fields=['data'])
-    order.data = {**source, 'jobCardIds': [parent_id]}; order.save(update_fields=['data', 'updated_at'])
+    if order:
+        order.data = {**source, 'jobCardIds': [parent_id]}; order.save(update_fields=['data', 'updated_at'])
     return job
 
 
@@ -261,10 +284,17 @@ class Orders(APIView):
             key = uuid5(NAMESPACE_URL, 'navapack-sales-quotation:' + str(data['quotationId']))
         existing = WorkflowOrder.objects.filter(request_id=key).first()
         if existing:
-            if data.get('quotationId') and existing.data.get('quotationId') == data['quotationId']:
-                return Response(existing.data)
             # Compare original immutable entry rather than server-assigned state.
             if existing.data.get('entryRequest') != data:
+                error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
+            return Response(existing.data)
+        original = deepcopy(data)
+        from .order_source import quotation_source
+        quotation_source(data, request.user)
+        # The quotation row lock serializes conversions of this saved revision.
+        existing = WorkflowOrder.objects.filter(request_id=key).first()
+        if existing:
+            if existing.data.get('entryRequest') != original:
                 error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
             return Response(existing.data)
         if not all(str(data.get(key, '')).strip() for key in ('customerName', 'marketingPersonName', 'currency')) or data.get('customerType') not in ('B2B', 'B2C'):
@@ -285,6 +315,7 @@ class Orders(APIView):
             if item['fulfillmentSource'] == 'stock' and not FinishedStockItem.objects.filter(pk=item.get('itemId'), unit=item['unit']).exists():
                 fail('Stock items must reference the exact saved finished-goods variant and unit.')
             if item['fulfillmentSource'] == 'manufacturing':
+                validate_existing_manufacturing_item(item)
                 model = ProductionModelRevision.objects.filter(model_id=item.get('modelId'), revision=item.get('modelRevision')).first()
                 if not model:
                     fail('Select a saved, configured production model revision.')
@@ -295,7 +326,6 @@ class Orders(APIView):
                 requirements(model.data, item)
                 if dated(item.get('requiredDate')) < dated(data['date']):
                     fail('Enter a manufacturing delivery date on or after the order date.')
-        original = deepcopy(data)
         pricing = data.get('commercialPricing') or {}
         discount = money(number(pricing.get('discount', 0)))
         if discount > total or pricing.get('taxMode', 'exclusive') not in ('exclusive', 'inclusive'):
@@ -310,9 +340,28 @@ class Orders(APIView):
                       orderTotal=float(money(net + money(led) + money(led_tax))), entryRequest=original,
                       createdBy=request.user.pk, persistedWorkflow=True)
         order.data = stored; order.save(update_fields=['data'])
-        if data.get('allocateJobCard') and any(line['fulfillmentSource'] == 'manufacturing' for line in items):
-            allocate(order, request.user)
         return Response(order.data, status=201)
+
+
+class ApproveOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        allowed(request.user, 'approve_workfloworder')
+        if request.user.effective_role not in ('admin', 'production_manager'):
+            raise PermissionDenied('Production Manager or Admin must approve Sales Orders.')
+        order = serializers.PrimaryKeyRelatedField(queryset=WorkflowOrder.objects.select_for_update()).run_validation(pk)
+        if order.data.get('salesOrderApproval'):
+            return Response(order.data)
+        if order.data.get('status') in ('Cancelled', 'Completed', 'Dispatched'):
+            fail('Closed Sales Orders cannot be approved.')
+        order.data.update(status='Approved', salesOrderApproval={'approvedBy': request.user.get_full_name() or request.user.username,
+                          'approvedById': request.user.pk, 'approvedAt': timezone.now().isoformat()})
+        order.save(update_fields=['data', 'updated_at'])
+        if any(item['fulfillmentSource'] == 'manufacturing' for item in order.data['items']):
+            allocate(order, request.user)
+        return Response(order.data)
 
 
 class Allocate(APIView):
@@ -332,16 +381,40 @@ class Jobs(APIView):
         allowed(request.user, 'view_workflowjob')
         return Response(list(WorkflowJob.objects.values_list('data', flat=True)))
 
+    @transaction.atomic
+    def post(self, request):
+        allowed(request.user, 'add_workfloworder')
+        key = serializers.UUIDField().run_validation(request.data.get('creationKey'))
+        # Lock the creator to serialize duplicate submissions, including custom products.
+        get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        data = {field: deepcopy(request.data[field]) for field in ('itemName', 'itemId', 'quantity', 'unit', 'modelId', 'modelRevision', 'requiredDate', 'specifications', 'jobRouting') if field in request.data}
+        existing = WorkflowJob.objects.filter(request_id=key).first()
+        if existing:
+            if existing.data.get('manualRequest') != data:
+                error = APIException('This creation key was already used with different Job Card details.'); error.status_code = 409; raise error
+            return Response(existing.data)
+        data['itemName'] = serializers.CharField(max_length=250).run_validation(data.get('itemName'))
+        data['unit'] = serializers.CharField(max_length=30).run_validation(data.get('unit'))
+        number(data.get('quantity'), True)
+        data.update(id=str(uuid4()), fulfillmentSource='manufacturing')
+        source = {'date': timezone.localdate().isoformat(), 'customerName': '', 'items': [data]}
+        job = allocate(None, request.user, source, key)
+        job.data['manualRequest'] = {field: deepcopy(request.data[field]) for field in ('itemName', 'itemId', 'quantity', 'unit', 'modelId', 'modelRevision', 'requiredDate', 'specifications', 'jobRouting') if field in request.data}
+        job.save(update_fields=['data'])
+        return Response(job.data, status=201)
+
 
 class JobAction(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, pk, action):
-        permission = {'approve': 'approve_workflowjob', 'edit': 'change_workflowjob', 'issue': 'issue_workflowjob'}.get(action)
+        permission = {'approve': 'approve_workflowjob', 'edit': 'change_workflowjob', 'issue': 'issue_workflowjob', 'costing': 'view_workflowjob', 'approve-costing': 'approve_workflowjob'}.get(action)
         if not permission:
             fail('Unknown workflow action.')
         allowed(request.user, permission)
+        if action == 'costing' and request.user.effective_role not in ('admin', 'accounts', 'receptionist', 'production_manager'):
+            raise PermissionDenied('Sales, Accounts or Production Manager must prepare costing.')
         job = serializers.PrimaryKeyRelatedField(queryset=WorkflowJob.objects.select_for_update()).run_validation(pk)
         if request.data.get('expectedVersion') != job.version:
             error = APIException('This Job Card changed in another session. Reload before continuing.'); error.status_code = 409; raise error
@@ -351,6 +424,8 @@ class JobAction(APIView):
             if any(child.get('approval') or child['status'] != 'PendingApproval' for child in card['manufacturingItems']):
                 fail('Only unapproved pending Job Cards can be approved.')
             for child in card['manufacturingItems']:
+                if child.get('plannedCosting') and child['plannedCosting']['status'] != 'Approved':
+                    fail('Complete and approve each planned costing sheet before approving the Job Card.')
                 route(child['productionStages'])
                 child.update(status='StoreIssuePending', department='Store', approval={'approvedBy': request.user.get_full_name() or request.user.username, 'approvedAt': timezone.now().isoformat()})
                 child['routingApproved'] = {'revision': child['routingRevision'], 'stages': deepcopy(child['productionStages']), 'materials': deepcopy(child['requiredMaterials']), **child['approval']}
@@ -359,7 +434,31 @@ class JobAction(APIView):
             child = next((row for row in card['manufacturingItems'] if row['id'] == item_id), None)
             if not child:
                 fail('Select the manufacturing item within this Job Card.')
-            if action == 'edit':
+            if action in ('costing', 'approve-costing'):
+                if child.get('approval') or child['status'] != 'PendingApproval':
+                    fail('Approved or issued Job Card costing is locked.')
+                previous = child.get('plannedCosting')
+                if request.data.get('expectedCostingRevision', (previous or {}).get('revision', 0)) != (previous or {}).get('revision', 0):
+                    error = APIException('This costing sheet changed while you were editing. Reload and review the latest revision.'); error.status_code = 409; raise error
+                model = ProductionModelRevision.objects.get(model_id=child['modelId'], revision=child['modelRevision'])
+                sheet = new_sheet(child, model.data, previous) if action == 'costing' else deepcopy(previous)
+                if not sheet:
+                    fail('Create and complete the planned costing sheet first.')
+                if action == 'costing':
+                    if 'input' in request.data:
+                        if not isinstance(request.data['input'], dict):
+                            fail('Costing inputs must contain the saved material and process scope.')
+                        sheet['input'] = deepcopy(request.data['input'])
+                    validate_scope(sheet['input'], child)
+                    sheet = recalculate(sheet, child)
+                else:
+                    sheet = recalculate(sheet, child)
+                    if sheet['totals'] is None:
+                        fail('Complete planned costing before PM approval: ' + sheet['validationError'])
+                    sheet.update(status='Approved', approvedBy=request.user.get_full_name() or request.user.username, approvedAt=timezone.now().isoformat())
+                child['plannedCosting'] = sheet
+                child['activityHistory'].append(event(request.user, 'Planned costing ' + ('approved' if action == 'approve-costing' else 'saved'), 'Production Manager', f"Costing revision {sheet['revision']}; actual waste is recorded during production."))
+            elif action == 'edit':
                 if child.get('approval') or child['status'] != 'PendingApproval':
                     fail('Approved or issued requirements are locked.')
                 change = request.data.get('change', {})
@@ -368,8 +467,8 @@ class JobAction(APIView):
                 for key in ('specifications', 'productionRequirements', 'requiredDate'):
                     if key in change:
                         child[key] = change[key]
-                if dated(child['requiredDate']) < dated(job.order.data['date']):
-                    fail('Required date cannot precede the Sales Order.')
+                if dated(child['requiredDate']) < dated(job.order.data['date'] if job.order_id else card['createdDate']):
+                    fail('Required date cannot precede the order or manual Job Card creation date.')
                 if 'productionStages' in change:
                     child['productionStages'] = route(change['productionStages'])
                 if 'requiredMaterials' in change:
@@ -382,6 +481,9 @@ class JobAction(APIView):
                         number(row.get('requiredQuantity'), True)
                     child['requiredMaterials'] = deepcopy(materials)
                 child['activityHistory'].append(event(request.user, 'PM correction', 'Production Manager', 'Required materials/process steps reviewed and corrected before approval.'))
+                if child.get('plannedCosting') and any(key in change for key in ('productionStages', 'requiredMaterials')):
+                    model = ProductionModelRevision.objects.get(model_id=child['modelId'], revision=child['modelRevision'])
+                    child['plannedCosting'] = new_sheet(child, model.data, child['plannedCosting'])
             else:
                 if not child.get('approval') or child['status'] not in ('StoreIssuePending', 'MaterialIssued'):
                     fail('Only approved items awaiting Store Issue can issue materials.')

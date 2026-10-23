@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/production-workflow/orders/', workflow.Orders.as_view()),
     path('api/production-workflow/order-options/', workflow.OrderOptions.as_view()),
     path('api/production-workflow/orders/<int:pk>/allocate/', workflow.Allocate.as_view()),
+    path('api/production-workflow/orders/<int:pk>/approve/', workflow.ApproveOrder.as_view()),
     path('api/production-workflow/jobs/', workflow.Jobs.as_view()),
     path('api/production-workflow/jobs/<int:pk>/<str:action>/', workflow.JobAction.as_view()),
     path('api/finished-stock/', FinishedStockSnapshot.as_view()),
