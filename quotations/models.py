@@ -16,6 +16,7 @@ class QuotationDraft(models.Model):
 
 
 class Quotation(models.Model):
+    control_version = models.PositiveBigIntegerField(null=True, blank=True, editable=False)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     source_id = models.CharField(max_length=100)
     fingerprint = models.CharField(max_length=64)
