@@ -98,3 +98,5 @@ class ProcurementPlanRevision(models.Model):
     class Meta:
         ordering = ['-version']
         constraints = [models.UniqueConstraint(fields=['plan', 'version'], name='unique_procurement_plan_revision')]
+
+from .catalog_models import SpareItem, Consumable, SpareStockMovement  # noqa: F401

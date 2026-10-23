@@ -13,7 +13,11 @@ from erp.grn import GoodsReceivedNoteViewSet
 from erp import production_workflow as workflow
 from erp.order_drafts import DraftAPI, DraftDetail, DraftHistory
 
+from inventory.catalog_api import SpareViewSet, ConsumableViewSet
+
 router = DefaultRouter()
+router.register('spares', SpareViewSet)
+router.register('consumables', ConsumableViewSet)
 router.register('customers', CustomerViewSet)
 router.register('units', UnitViewSet)
 router.register('suppliers', SupplierViewSet)

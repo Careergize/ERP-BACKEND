@@ -24,6 +24,11 @@ def allowed(user, action):
         raise PermissionDenied('Your account does not have permission for this workflow action.')
 
 
+def require_operational_authority():
+    # Target workflow is agreed; SOP adoption and the authority matrix are not.
+    raise PermissionDenied('Operational transition unavailable: approved authority mapping and policy evidence are required.')
+
+
 def number(value, positive=False):
     try:
         result = Decimal(str(value))
@@ -131,8 +136,8 @@ def allocate(order, user, source=None, request_id=None):
     existing = WorkflowJob.objects.filter(order=order).first() if order else None
     if existing:
         return existing
-    if order and not order.data.get('salesOrderApproval'):
-        fail('Approve the Sales Order before creating its linked Job Card.')
+    # Preparation does not authorize production. Public allocation and all
+    # operational approvals remain blocked until authority evidence is available.
     source = order.data if order else source
     manufacturing = [line for line in source['items'] if line['fulfillmentSource'] == 'manufacturing']
     if not manufacturing:
@@ -325,68 +330,26 @@ class Orders(APIView):
             if existing.data.get('entryRequest') != data:
                 error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
             return Response(existing.data)
-<<<<<<< HEAD
         original = deepcopy(data)
-        from .order_source import quotation_source
-        quotation_source(data, request.user)
-        # The quotation row lock serializes conversions of this saved revision.
-        existing = WorkflowOrder.objects.filter(request_id=key).first()
-        if existing:
-            if existing.data.get('entryRequest') != original:
-                error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
-            return Response(existing.data)
-        if not all(str(data.get(key, '')).strip() for key in ('customerName', 'marketingPersonName', 'currency')) or data.get('customerType') not in ('B2B', 'B2C'):
-            fail('Complete customer, marketing person, customer type and currency.')
-        dated(data.get('date'))
-        tax = number(data.get('taxRate'))
-        if tax > 100:
-            fail('Tax cannot exceed 100%.')
-        items = data.get('items', [])
-        if not isinstance(items, list) or not items or len(items) > 100 or len({item.get('id') for item in items}) != len(items):
-            fail('Add distinct order items.')
-        total = Decimal(0)
-        money = lambda value: Decimal(value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        for item in items:
-            if not item.get('id') or not item.get('itemName') or not item.get('unit') or item.get('fulfillmentSource') not in ('stock', 'manufacturing'):
-                fail('Select each item and its stock or manufacturing fulfillment source.')
-            total += money(number(item.get('quantity'), True) * number(item.get('unitPrice')))
-            if item['fulfillmentSource'] == 'stock' and not FinishedStockItem.objects.filter(pk=item.get('itemId'), unit=item['unit']).exists():
-                fail('Stock items must reference the exact saved finished-goods variant and unit.')
+        if data.get('quotationId'):
+            from .order_source import quotation_source
+            quotation_source(data, request.user)
+            existing = WorkflowOrder.objects.filter(request_id=key).first()
+            if existing:
+                if existing.data.get('entryRequest') != original:
+                    error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
+                return Response(existing.data)
+        order_total = validated_order_total(data)
+        for item in data['items']:
             if item['fulfillmentSource'] == 'manufacturing':
                 validate_existing_manufacturing_item(item)
-                model = ProductionModelRevision.objects.filter(model_id=item.get('modelId'), revision=item.get('modelRevision')).first()
-                if not model:
-                    fail('Select a saved, configured production model revision.')
-                if 'jobRouting' in item:
-                    route(item['jobRouting'])
-                else:
-                    route(model.data.get('routing', []))
-                requirements(model.data, item)
-                if dated(item.get('requiredDate')) < dated(data['date']):
-                    fail('Enter a manufacturing delivery date on or after the order date.')
-        pricing = data.get('commercialPricing') or {}
-        discount = money(number(pricing.get('discount', 0)))
-        if discount > total or pricing.get('taxMode', 'exclusive') not in ('exclusive', 'inclusive'):
-            fail('Check discount and tax treatment.')
-        basis = money(total - discount)
-        net = basis if pricing.get('taxMode') == 'inclusive' else money(basis * (1 + tax / 100))
-        led = sum(number((item.get('ledSnapshot') or {}).get('selectedAmount', 0)) for item in items)
-        led_tax = sum(number(item['ledSnapshot'].get('selectedAmount', 0)) * tax / 100 for item in items if (item.get('ledSnapshot') or {}).get('vatOnLED'))
-=======
-        order_total = validated_order_total(data)
-        original = deepcopy(data)
->>>>>>> 89a2a2a44e86d9afbc65acb4854027fc62083628
         order = WorkflowOrder.objects.create(request_id=key, data={}, created_by=request.user)
         stored = {key: deepcopy(data[key]) for key in ('customerName', 'customerId', 'date', 'marketingPersonName', 'customerType', 'requisitionOrder', 'items', 'currency', 'taxRate', 'commercialPricing', 'quotationId', 'quotationRevisionId', 'quotationNumber', 'quotationRevision', 'prospectId', 'customerContact', 'commercialTerms') if key in data}
         stored.update(id='wf-order-' + str(order.pk), orderNumber=f'SO-W{order.pk:05d}', status='Draft', jobCardIds=[],
                       orderTotal=order_total, entryRequest=original,
                       createdBy=request.user.pk, persistedWorkflow=True)
         order.data = stored; order.save(update_fields=['data'])
-<<<<<<< HEAD
-=======
-        if data.get('allocateJobCard') and any(line['fulfillmentSource'] == 'manufacturing' for line in data['items']):
-            allocate(order, request.user)
->>>>>>> 89a2a2a44e86d9afbc65acb4854027fc62083628
+
         return Response(order.data, status=201)
 
 
@@ -395,6 +358,7 @@ class ApproveOrder(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
+        require_operational_authority()
         allowed(request.user, 'approve_workfloworder')
         if request.user.effective_role not in ('admin', 'production_manager'):
             raise PermissionDenied('Production Manager or Admin must approve Sales Orders.')
@@ -416,6 +380,7 @@ class Allocate(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
+        require_operational_authority()
         allowed(request.user, 'add_workfloworder')
         order = serializers.PrimaryKeyRelatedField(queryset=WorkflowOrder.objects.select_for_update()).run_validation(pk)
         return Response(allocate(order, request.user).data)
@@ -430,6 +395,7 @@ class Jobs(APIView):
 
     @transaction.atomic
     def post(self, request):
+        require_operational_authority()
         allowed(request.user, 'add_workfloworder')
         key = serializers.UUIDField().run_validation(request.data.get('creationKey'))
         # Lock the creator to serialize duplicate submissions, including custom products.
@@ -467,6 +433,8 @@ class JobAction(APIView):
             error = APIException('Controlled Job Cards require controlled commands; approval and issue policy are not configured.')
             error.status_code = 409
             raise error
+        if action in ('approve', 'issue', 'approve-costing'):
+            require_operational_authority()
         if request.data.get('expectedVersion') != job.version:
             error = APIException('This Job Card changed in another session. Reload before continuing.'); error.status_code = 409; raise error
         card = deepcopy(job.data)

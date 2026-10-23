@@ -215,13 +215,9 @@ class WorkflowOrder(Record):
 
 
 class WorkflowJob(Record):
-<<<<<<< HEAD
+    source_confirmed_revision = models.ForeignKey('WorkflowOrderRevision', on_delete=models.PROTECT, null=True, blank=True, related_name='+', editable=False)
     order = models.OneToOneField(WorkflowOrder, on_delete=models.PROTECT, related_name='workflow_job', null=True, blank=True)
     request_id = models.UUIDField(unique=True, null=True, blank=True, editable=False)
-=======
-    source_confirmed_revision = models.ForeignKey('WorkflowOrderRevision', on_delete=models.PROTECT, null=True, blank=True, related_name='+', editable=False)
-    order = models.OneToOneField(WorkflowOrder, on_delete=models.PROTECT, related_name='workflow_job')
->>>>>>> 89a2a2a44e86d9afbc65acb4854027fc62083628
     data = models.JSONField()
     version = models.PositiveIntegerField(default=1)
 
