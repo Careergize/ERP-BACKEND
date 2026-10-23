@@ -7,3 +7,5 @@ __pycache__/
 staticfiles/
 .coverage
 output/pdf/*.png
+
+venv/
