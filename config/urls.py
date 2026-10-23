@@ -11,6 +11,7 @@ from erp.purchases import PurchaseOrderViewSet
 from erp.finished_stock import FinishedStockSnapshot
 from erp.grn import GoodsReceivedNoteViewSet
 from erp import production_workflow as workflow
+from erp.order_drafts import DraftAPI, DraftDetail, DraftHistory
 
 router = DefaultRouter()
 router.register('customers', CustomerViewSet)
@@ -26,7 +27,15 @@ router.register('quotation-drafts', QuotationDraftViewSet)
 router.register('roles', RoleViewSet)
 router.register('users', ManagedUserViewSet)
 
+from erp.job_drafts import JobDraftAPI, JobDraftDetail, JobDraftHistory
+
 urlpatterns = [
+    path('api/production-workflow/job-drafts/', JobDraftAPI.as_view()),
+    path('api/production-workflow/job-drafts/<int:pk>/', JobDraftDetail.as_view()),
+    path('api/production-workflow/job-drafts/<int:pk>/history/', JobDraftHistory.as_view()),
+    path('api/production-workflow/order-drafts/', DraftAPI.as_view()),
+    path('api/production-workflow/order-drafts/<int:pk>/', DraftDetail.as_view()),
+    path('api/production-workflow/order-drafts/<int:pk>/history/', DraftHistory.as_view()),
     path('api/production-workflow/processes/', workflow.Processes.as_view()),
     path('api/production-workflow/models/', workflow.Models.as_view()),
     path('api/production-workflow/orders/', workflow.Orders.as_view()),
