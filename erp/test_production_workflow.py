@@ -37,6 +37,40 @@ class ProductionWorkflowTests(TestCase):
         self.assertEqual(result.status_code, 201, result.data)
         return result.data, self.client.get('/api/production-workflow/jobs/').data[0]
 
+    def test_manual_order_workflows_and_saved_machine_compatibility(self):
+        process = self.client.post('/api/production-workflow/processes/', self.model['routing'][1], format='json')
+        self.assertEqual(process.status_code, 201, process.data)
+        machine = self.client.post('/api/production-workflow/machines/', {'name': 'Printer A', 'department': 'Printing', 'type': 'printer', 'processIds': [process.data['id']]}, format='json')
+        self.assertEqual(machine.status_code, 201, machine.data)
+        self.assertEqual(self.client.get('/api/production-workflow/machines/').data[0]['name'], 'Printer A')
+        step = {**self.model['routing'][1], 'id': str(uuid4()), 'processId': process.data['id'], 'machineId': machine.data['id'], 'expectedOutput': 20}
+        body = deepcopy(self.body); body['items'][0]['jobRouting'] = [step, {**step, 'id': str(uuid4()), 'name': 'Second print pass'}]
+        order, job = self.create_order(body)
+        stages = job['manufacturingItems'][0]['productionStages']
+        self.assertEqual([s['sequence'] for s in stages], [1, 2])
+        self.assertEqual(stages[0]['machine'], 'Printer A')
+        self.assertEqual(stages[0]['expectedOutput'], 20)  # Per-order plan is not batch-scaled.
+        self.assertEqual(self.client.post('/api/production-workflow/orders/', body, format='json').status_code, 200)
+        self.assertEqual(WorkflowJob.objects.count(), 1)
+        changed = self.action(job, 'edit', 'production_manager', itemId=job['manufacturingItems'][0]['id'], change={'productionStages': list(reversed(stages))})
+        self.assertEqual(changed.status_code, 200, changed.data)
+        self.assertEqual(changed.data['manufacturingItems'][0]['productionStages'][0]['name'], 'Second print pass')
+        self.assertEqual(self.action(changed.data, 'approve', 'production_manager').status_code, 200)
+
+    def test_manual_workflow_rejects_empty_unknown_or_incompatible_machines(self):
+        from .models import ProductionProcess, ProductionMachine
+        process = ProductionProcess.objects.create(name='Print', data={})
+        machine = ProductionMachine.objects.create(name='Print A', data={'active': True, 'processIds': [str(process.pk)]})
+        other = ProductionProcess.objects.create(name='Cut', data={})
+        for stages in ([], [{**self.model['routing'][0], 'machineId': 'unknown'}], [{**self.model['routing'][0], 'processId': str(other.pk), 'machineId': str(machine.pk)}]):
+            body = deepcopy(self.body); body['items'][0]['jobRouting'] = stages
+            self.client.force_authenticate(self.users['receptionist'])
+            result = self.client.post('/api/production-workflow/orders/', body, format='json')
+            self.assertEqual(result.status_code, 400, result.data)
+        self.assertFalse(WorkflowOrder.objects.exists())
+        self.client.force_authenticate(self.users['store_keeper'])
+        self.assertEqual(self.client.post('/api/production-workflow/machines/', {}, format='json').status_code, 403)
+
     def action(self, job, action, role, **kwargs):
         self.client.force_authenticate(self.users[role])
         return self.client.post(f'/api/production-workflow/jobs/{job["workflowKey"]}/{action}/',
@@ -133,3 +167,35 @@ class ProductionWorkflowTests(TestCase):
         # Existing order snapshots still use their explicitly selected revision.
         order, job = self.create_order()
         self.assertEqual(len(job['manufacturingItems'][0]['productionStages']), 3)
+
+    def test_sales_options_use_saved_customers_active_staff_and_latest_models(self):
+        from .models import Customer
+        active = Customer.objects.create(name='Saved customer')
+        Customer.objects.create(name='Inactive customer', is_active=False)
+        get_user_model().objects.create_user('inactive-staff', is_active=False)
+        revised = deepcopy(self.model); revised['name'] = 'Latest saved model'
+        self.client.post('/api/production-workflow/models/', revised, format='json')
+        response = self.client.get('/api/production-workflow/order-options/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['customers'], [{'id': f'db:{active.pk}', 'name': active.name}])
+        self.assertEqual(response.data['models'][0]['revision'], 2)
+        self.assertEqual(len(response.data['models']), 1)
+        self.assertFalse(any(row['name'] == 'inactive-staff' for row in response.data['staff']))
+        self.assertTrue(all(set(row) == {'id', 'name', 'detail'} for row in response.data['staff']))
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get('/api/production-workflow/order-options/').status_code, 401)
+
+    def test_converted_quotation_is_api_saved_with_metadata_and_does_not_duplicate(self):
+        body = deepcopy(self.body); body['allocateJobCard'] = False
+        body.update(quotationId=str(uuid4()), quotationNumber='QT-001', quotationRevisionId=str(uuid4()), quotationRevision=2,
+                    customerContact={'contactPerson': 'Saved contact'}, commercialTerms={'paymentTerms': '30 days'})
+        result = self.client.post('/api/production-workflow/orders/', body, format='json')
+        self.assertEqual(result.status_code, 201, result.data)
+        saved = self.client.get('/api/production-workflow/orders/').data[0]
+        for key in ('quotationId', 'quotationNumber', 'quotationRevisionId', 'quotationRevision', 'customerContact', 'commercialTerms'):
+            self.assertEqual(saved[key], body[key])
+        body['creationKey'] = str(uuid4()); body['items'][0]['id'] = str(uuid4())
+        retried = self.client.post('/api/production-workflow/orders/', body, format='json')
+        self.assertEqual(retried.data['id'], saved['id'])
+        self.assertEqual(WorkflowOrder.objects.count(), 1)
+        self.assertEqual(WorkflowJob.objects.count(), 0)

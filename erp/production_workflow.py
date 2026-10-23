@@ -1,7 +1,8 @@
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from uuid import uuid4
+from uuid import uuid4, uuid5, NAMESPACE_URL
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -10,7 +11,7 @@ from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from inventory.models import RawMaterial, RawMovement
-from .models import ProductionProcess, ProductionModelRevision, WorkflowOrder, WorkflowJob, FinishedStockItem
+from .models import ProductionMachine, ProductionProcess, ProductionModelRevision, WorkflowOrder, WorkflowJob, FinishedStockItem, Customer
 
 
 def fail(message):
@@ -55,7 +56,17 @@ def route(stages):
             fail('Complete process names, departments and units.')
         if len(str(original['name'])) > 150:
             fail('Process names cannot exceed 150 characters.')
-        stage = {key: deepcopy(original[key]) for key in ('name', 'department', 'inputUnit', 'outputUnit', 'wasteUnit', 'machine', 'machineId', 'instructions', 'qcTemplateIds') if key in original}
+        stage = {key: deepcopy(original[key]) for key in ('name', 'department', 'inputUnit', 'outputUnit', 'wasteUnit', 'machine', 'machineId', 'processId', 'instructions', 'qcTemplateIds') if key in original}
+        if stage.get('processId'):
+            serializers.PrimaryKeyRelatedField(queryset=ProductionProcess.objects.all()).run_validation(stage['processId'])
+        if stage.get('machineId'):
+            machine = serializers.PrimaryKeyRelatedField(queryset=ProductionMachine.objects.all()).run_validation(stage['machineId'])
+            if not machine.data.get('active', True):
+                fail('Select an active saved machine.')
+            supported = machine.data.get('processIds', [])
+            if supported and stage.get('processId') not in supported:
+                fail('This machine does not support the selected process.')
+            stage['machine'] = machine.name
         stage.update(id=str(original.get('id') or uuid4()), sequence=index + 1, required=bool(original.get('required', True)), kind='production',
                      status='Pending', inputQuantity=None, outputQuantity=None, wasteQuantity=None, operator='', remarks='')
         for key in ('expectedInput', 'expectedOutput', 'plannedWastePercent'):
@@ -115,12 +126,13 @@ def allocate(order, user):
         if not revision:
             fail('Save a configured production model revision before allocating the Job Card.')
         model = revision.data
-        stages = route(model.get('routing', []))
+        custom_route = 'jobRouting' in item
+        stages = route(item['jobRouting'] if custom_route else model.get('routing', []))
         materials = requirements(model, item)
         scale = number(item['quantity'], True) / number(model.get('productionBatchQuantity', model.get('batchQuantity')), True)
         for stage in stages:
             for key in ('expectedInput', 'expectedOutput'):
-                if key in stage:
+                if key in stage and not custom_route:
                     stage[key] = float(number(stage[key]) * scale)
         due = item.get('requiredDate')
         if dated(due) < dated(source['date']):
@@ -149,16 +161,41 @@ def allocate(order, user):
     return job
 
 
+class Machines(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        allowed(request.user, 'view_productionprocess')
+        return Response([{**row.data, 'id': str(row.pk)} for row in ProductionMachine.objects.all()])
+
+    def post(self, request):
+        allowed(request.user, 'add_productionprocess')
+        name = serializers.CharField(max_length=150).run_validation(request.data.get('name'))
+        department = serializers.CharField(max_length=150).run_validation(request.data.get('department'))
+        ids = serializers.ListField(child=serializers.IntegerField(min_value=1), allow_empty=False).run_validation(request.data.get('processIds', []))
+        ids = [str(value) for value in ids]
+        if ProductionProcess.objects.filter(pk__in=ids).count() != len(set(ids)):
+            fail('Select saved processes for this machine.')
+        if ProductionMachine.objects.filter(name__iexact=name).exists():
+            fail('This machine already exists.')
+        data = {'name': name, 'department': department, 'type': str(request.data.get('type', 'production')),
+                'active': True, 'processIds': ids}
+        row = ProductionMachine.objects.create(name=name, data=data)
+        return Response({'id': str(row.pk), **data}, status=201)
+
+
 class Processes(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         allowed(request.user, 'view_productionprocess')
-        return Response([{'id': str(row.pk), **row.data} for row in ProductionProcess.objects.all()])
+        return Response([{**row.data, 'id': str(row.pk)} for row in ProductionProcess.objects.all()])
 
     def post(self, request):
         allowed(request.user, 'add_productionprocess')
         stage = route([request.data])[0]
+        for key in ('processId', 'machineId', 'machine'):
+            stage.pop(key, None)
         if ProductionProcess.objects.filter(name__iexact=stage['name']).exists():
             fail('This process already exists. Select it from the process list.')
         row = ProductionProcess.objects.create(name=stage['name'], data=stage)
@@ -194,6 +231,20 @@ class Models(APIView):
         return Response(row.data, status=201)
 
 
+class OrderOptions(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        allowed(request.user, 'view_workfloworder')
+        latest = {}
+        for row in ProductionModelRevision.objects.order_by('model_id', '-revision'):
+            latest.setdefault(row.model_id, row.data)
+        return Response({'customers': [{'id': f'db:{row.pk}', 'name': row.name} for row in Customer.objects.filter(is_active=True).order_by('name')],
+                         'staff': [{'id': str(row.pk), 'name': row.get_full_name() or row.username, 'detail': row.department}
+                                   for row in get_user_model().objects.filter(is_active=True).order_by('username')],
+                         'models': list(latest.values())})
+
+
 class Orders(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -206,8 +257,12 @@ class Orders(APIView):
         allowed(request.user, 'add_workfloworder')
         data = deepcopy(request.data)
         key = serializers.UUIDField().run_validation(data.pop('creationKey', None))
+        if data.get('quotationId'):
+            key = uuid5(NAMESPACE_URL, 'navapack-sales-quotation:' + str(data['quotationId']))
         existing = WorkflowOrder.objects.filter(request_id=key).first()
         if existing:
+            if data.get('quotationId') and existing.data.get('quotationId') == data['quotationId']:
+                return Response(existing.data)
             # Compare original immutable entry rather than server-assigned state.
             if existing.data.get('entryRequest') != data:
                 error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
@@ -233,7 +288,11 @@ class Orders(APIView):
                 model = ProductionModelRevision.objects.filter(model_id=item.get('modelId'), revision=item.get('modelRevision')).first()
                 if not model:
                     fail('Select a saved, configured production model revision.')
-                route(model.data.get('routing', [])); requirements(model.data, item)
+                if 'jobRouting' in item:
+                    route(item['jobRouting'])
+                else:
+                    route(model.data.get('routing', []))
+                requirements(model.data, item)
                 if dated(item.get('requiredDate')) < dated(data['date']):
                     fail('Enter a manufacturing delivery date on or after the order date.')
         original = deepcopy(data)
@@ -246,7 +305,7 @@ class Orders(APIView):
         led = sum(number((item.get('ledSnapshot') or {}).get('selectedAmount', 0)) for item in items)
         led_tax = sum(number(item['ledSnapshot'].get('selectedAmount', 0)) * tax / 100 for item in items if (item.get('ledSnapshot') or {}).get('vatOnLED'))
         order = WorkflowOrder.objects.create(request_id=key, data={}, created_by=request.user)
-        stored = {key: deepcopy(data[key]) for key in ('customerName', 'customerId', 'date', 'marketingPersonName', 'customerType', 'requisitionOrder', 'items', 'currency', 'taxRate', 'commercialPricing') if key in data}
+        stored = {key: deepcopy(data[key]) for key in ('customerName', 'customerId', 'date', 'marketingPersonName', 'customerType', 'requisitionOrder', 'items', 'currency', 'taxRate', 'commercialPricing', 'quotationId', 'quotationRevisionId', 'quotationNumber', 'quotationRevision', 'prospectId', 'customerContact', 'commercialTerms') if key in data}
         stored.update(id='wf-order-' + str(order.pk), orderNumber=f'SO-W{order.pk:05d}', status='Draft', jobCardIds=[],
                       orderTotal=float(money(net + money(led) + money(led_tax))), entryRequest=original,
                       createdBy=request.user.pk, persistedWorkflow=True)

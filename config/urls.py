@@ -28,8 +28,10 @@ router.register('users', ManagedUserViewSet)
 
 urlpatterns = [
     path('api/production-workflow/processes/', workflow.Processes.as_view()),
+    path('api/production-workflow/machines/', workflow.Machines.as_view()),
     path('api/production-workflow/models/', workflow.Models.as_view()),
     path('api/production-workflow/orders/', workflow.Orders.as_view()),
+    path('api/production-workflow/order-options/', workflow.OrderOptions.as_view()),
     path('api/production-workflow/orders/<int:pk>/allocate/', workflow.Allocate.as_view()),
     path('api/production-workflow/jobs/', workflow.Jobs.as_view()),
     path('api/production-workflow/jobs/<int:pk>/<str:action>/', workflow.JobAction.as_view()),

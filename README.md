@@ -157,6 +157,14 @@ In `../ERP-Navapack-frontend/.env`, set `VITE_API_BASE_URL=http://localhost:8000
 
 ## Verification and deployment
 
+Database selection uses DB_ENGINE=postgresql and DB_HOST/DB_PORT/DB_NAME/DB_USER/
+DB_PASSWORD from .env. For RDS set DB_SSLMODE=verify-full and
+DB_SSLROOTCERT=./global-bundle.pem; relative certificate paths resolve from Backend/.
+Download the AWS RDS CA bundle from
+https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem into Backend/.
+Set the password locally, restart Django, then verify connectivity before migrations.
+Changing configuration does not transfer existing SQLite records into PostgreSQL.
+
 ```powershell
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py test
@@ -166,5 +174,17 @@ In `../ERP-Navapack-frontend/.env`, set `VITE_API_BASE_URL=http://localhost:8000
 For deployment, supply a private secret, set `DJANGO_DEBUG=false`, configure allowed hosts/CORS and PostgreSQL credentials, migrate, collect static files, and serve through a production WSGI/ASGI server behind HTTPS. Secure cookies, SSL redirect and HSTS are enabled when debug is false. Configure proxy trust only for your known proxy. Login throttles use Django's local cache by default; multi-worker deployments need a shared cache and edge rate limiting. Run `manage.py check --deploy` using production settings. SQLite is for local development; PostgreSQL behavior is not yet integration-tested.
 
 ## Remaining ERP implementation
+
+Machines are persisted by /api/production-workflow/machines/ (GET/POST) under existing
+process-master permissions. Each machine lists supported process IDs. Sales Order
+item jobRouting overrides the model route for that Job Card; process/machine references
+are validated and per-order plans are copied without recipe-batch scaling. Apply erp
+migration 0013 for the machine master.
+
+Sales Orders now use production-workflow/orders exclusively in the frontend.
+GET /api/production-workflow/order-options/ returns active customers, staff and latest
+saved model revisions under order-view permissions. Quotation conversion persists
+reference metadata and deduplicates retries by quotation identity. Later workflow
+limitations below do not apply to the implemented shared order/Job Card handoff.
 
 This is a backend foundation, not the complete ERP. Stock ledgers/posting, revisions and amendments, routing, material issue, approvals, QC, recycling, costing, quotations, invoicing, dashboard/trace reports and audit/idempotency/concurrency services remain to be implemented against the frontend business documentation. Draft orders/job cards deliberately expose no update, delete or approval endpoints. Product identities/units and master edits need further immutability rules before inventory integration. Admin is for trusted operators and bypasses API service validation; production workflows must use dedicated services.

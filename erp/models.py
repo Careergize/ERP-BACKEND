@@ -174,6 +174,11 @@ def grn_number():
     return 'GRN-' + uuid.uuid4().hex.upper()
 
 
+class ProductionMachine(Record):
+    name = models.CharField(max_length=150, unique=True)
+    data = models.JSONField(default=dict)
+
+
 class ProductionProcess(Record):
     name = models.CharField(max_length=150, unique=True)
     data = models.JSONField(default=dict)
