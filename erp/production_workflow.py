@@ -24,9 +24,9 @@ def allowed(user, action):
         raise PermissionDenied('Your account does not have permission for this workflow action.')
 
 
-def require_operational_authority():
-    # Target workflow is agreed; SOP adoption and the authority matrix are not.
-    raise PermissionDenied('Operational transition unavailable: approved authority mapping and policy evidence are required.')
+def require_operational_authority(user, action):
+    from .operational_policy import authorize
+    authorize(user, action)
 
 
 def number(value, positive=False):
@@ -128,6 +128,8 @@ def validate_existing_manufacturing_item(item):
     balance = product.opening_stock
     balance += sum((line.quantity for line in PurchaseOrderLine.objects.filter(stock_item=product, stock_posted=True)), Decimal(0))
     balance += sum((line.quantity_received - line.damaged_quantity for line in GoodsReceivedLine.objects.filter(purchase_line__stock_item=product)), Decimal(0))
+    from .operational_records import shared, quantity
+    balance += sum((quantity(row['quantity']) * (1 if row['type'] == 'IN' else -1) for row in shared('inventory-ledger', {'movements': []})['movements'] if str(row['productId']) == str(product.pk)), Decimal(0))
     if balance != 0:
         fail('Existing items can be manufactured only when available stock is zero. Use existing stock for this item.')
 
@@ -331,6 +333,8 @@ class Orders(APIView):
                 error = APIException('This Sales Order request was already saved with different details.'); error.status_code = 409; raise error
             return Response(existing.data)
         original = deepcopy(data)
+        if not data.get('quotationId'):
+            fail('Save a quotation before creating its Sales Order.')
         if data.get('quotationId'):
             from .order_source import quotation_source
             quotation_source(data, request.user)
@@ -358,7 +362,7 @@ class ApproveOrder(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
-        require_operational_authority()
+        require_operational_authority(request.user, 'order-approve')
         allowed(request.user, 'approve_workfloworder')
         if request.user.effective_role not in ('admin', 'production_manager'):
             raise PermissionDenied('Production Manager or Admin must approve Sales Orders.')
@@ -380,9 +384,11 @@ class Allocate(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
-        require_operational_authority()
+        require_operational_authority(request.user, 'job-create')
         allowed(request.user, 'add_workfloworder')
         order = serializers.PrimaryKeyRelatedField(queryset=WorkflowOrder.objects.select_for_update()).run_validation(pk)
+        if not order.data.get('salesOrderApproval'):
+            fail('Production Manager or Admin must approve the Sales Order before Job Card allocation.')
         return Response(allocate(order, request.user).data)
 
 
@@ -395,7 +401,7 @@ class Jobs(APIView):
 
     @transaction.atomic
     def post(self, request):
-        require_operational_authority()
+        require_operational_authority(request.user, 'job-create')
         allowed(request.user, 'add_workfloworder')
         key = serializers.UUIDField().run_validation(request.data.get('creationKey'))
         # Lock the creator to serialize duplicate submissions, including custom products.
@@ -434,7 +440,7 @@ class JobAction(APIView):
             error.status_code = 409
             raise error
         if action in ('approve', 'issue', 'approve-costing'):
-            require_operational_authority()
+            require_operational_authority(request.user, {'approve': 'job-approve', 'issue': 'job-issue', 'approve-costing': 'costing-approve'}[action])
         if request.data.get('expectedVersion') != job.version:
             error = APIException('This Job Card changed in another session. Reload before continuing.'); error.status_code = 409; raise error
         card = deepcopy(job.data)
@@ -523,6 +529,8 @@ class JobAction(APIView):
                         fail('Confirm the material opening balance, unit and date before issue.')
                     totals = {r['movement_type']: r['total'] for r in raw.movements.values('movement_type').annotate(total=Sum('quantity'))}
                     balance = raw.opening_stock + totals.get('IN', 0) - totals.get('OUT', 0)
+                    from .operational_records import raw_held_quantity
+                    balance -= raw_held_quantity(raw)
                     if quantity > balance:
                         fail('Required issue exceeds current Raw Material stock. Reload and issue only available quantities.')
                     RawMovement.objects.create(id='wf-issue-' + str(uuid4()), material=raw, date=timezone.localdate(), movement_type='OUT', quantity=quantity,

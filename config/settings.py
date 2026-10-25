@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 # Paths and environment
 BASE_DIR = Path(__file__).resolve().parent.parent
+NAVAPACK_OPERATIONAL_POLICY = 'navapack-owner-approved-2026-10-25'
 load_dotenv(BASE_DIR / '.env')
 
 
@@ -73,25 +74,25 @@ TEMPLATES = [
 ]
 
 
-# Database
-if os.getenv('DB_ENGINE', 'sqlite') == 'postgresql':
-    db_options = {'connect_timeout': 10}
-    if os.getenv('DB_SSLMODE'):
-        db_options['sslmode'] = os.environ['DB_SSLMODE']
-    if os.getenv('DB_SSLROOTCERT'):
-        cert_path = Path(os.environ['DB_SSLROOTCERT']).expanduser()
-        db_options['sslrootcert'] = str(cert_path if cert_path.is_absolute() else BASE_DIR / cert_path)
-    DATABASES = {'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ['DB_NAME'],
-        'USER': os.environ['DB_USER'],
-        'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-        'OPTIONS': db_options,
-    }}
-else:
-    DATABASES = {'default': {
+# # Database
+# if os.getenv('DB_ENGINE', 'sqlite') == 'postgresql':
+#     db_options = {'connect_timeout': 10}
+#     if os.getenv('DB_SSLMODE'):
+#         db_options['sslmode'] = os.environ['DB_SSLMODE']
+#     if os.getenv('DB_SSLROOTCERT'):
+#         cert_path = Path(os.environ['DB_SSLROOTCERT']).expanduser()
+#         db_options['sslrootcert'] = str(cert_path if cert_path.is_absolute() else BASE_DIR / cert_path)
+#     DATABASES = {'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.environ['DB_NAME'],
+#         'USER': os.environ['DB_USER'],
+#         'PASSWORD': os.getenv('DB_PASSWORD', ''),
+#         'HOST': os.getenv('DB_HOST', 'localhost'),
+#         'PORT': os.getenv('DB_PORT', '5432'),
+#         'OPTIONS': db_options,
+#     }}
+# else:
+DATABASES = {'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }}

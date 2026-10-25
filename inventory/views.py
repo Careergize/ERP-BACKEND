@@ -100,6 +100,8 @@ class RawMovementCreate(APIView):
                     raise serializers.ValidationError('Opening stock is unknown; confirm the opening balance before issuing material.')
                 totals = {row['movement_type']: row['total'] for row in material.movements.values('movement_type').annotate(total=Sum('quantity'))}
                 available = material.opening_stock + totals.get('IN', 0) - totals.get('OUT', 0)
+                from erp.operational_records import raw_held_quantity
+                available -= raw_held_quantity(material)
                 if v['quantity'] > available:
                     raise serializers.ValidationError('Consumption exceeds the remaining stock. Reload the store before retrying.')
             movement = RawMovement.objects.create(id=str(v['id']), created_by=request.user, **fields)

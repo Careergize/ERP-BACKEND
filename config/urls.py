@@ -12,6 +12,8 @@ from erp.finished_stock import FinishedStockSnapshot
 from erp.grn import GoodsReceivedNoteViewSet
 from erp import production_workflow as workflow
 from erp.order_drafts import DraftAPI, DraftDetail, DraftHistory
+from erp.shared_entries import SharedEntries, SharedEntryDetail, SharedEntryCommands, ManagementActivity, CostingSummary, RecyclingRecords
+from erp.recycling_purchases import PurchaseReport
 
 from inventory.catalog_api import SpareViewSet, ConsumableViewSet
 
@@ -34,6 +36,13 @@ router.register('users', ManagedUserViewSet)
 from erp.job_drafts import JobDraftAPI, JobDraftDetail, JobDraftHistory
 
 urlpatterns = [
+    path('api/recycling/purchases/report/', PurchaseReport.as_view()),
+    path('api/costing/', CostingSummary.as_view()),
+    path('api/recycling/<str:kind>/', RecyclingRecords.as_view()),
+    path('api/shared-entry-commands/', SharedEntryCommands.as_view()),
+    path('api/shared-entries/', SharedEntries.as_view()),
+    path('api/shared-entries/<str:key>/', SharedEntryDetail.as_view()),
+    path('api/management/activity/', ManagementActivity.as_view()),
     path('api/production-workflow/job-drafts/', JobDraftAPI.as_view()),
     path('api/production-workflow/job-drafts/<int:pk>/', JobDraftDetail.as_view()),
     path('api/production-workflow/job-drafts/<int:pk>/history/', JobDraftHistory.as_view()),

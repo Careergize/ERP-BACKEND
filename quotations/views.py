@@ -28,7 +28,11 @@ def manager_approved(quote):
 
 
 def quote_data(quote):
-    return {'id': str(quote.pk), 'document': quote.document, 'approved': manager_approved(quote), 'submitted_at': quote.submitted_at,
+    from .fulfillment import source_draft, linked_order
+    draft = source_draft(quote)
+    order = linked_order(quote)
+    fulfillment = {'requires_delivery_date': bool(draft and not draft.editor_data.get('salesOrderId') and any(line['type'] == 'custom' for line in draft.editor_data['lines'])), 'sales_order': {'id': order.data['id'], 'number': order.data['orderNumber'], 'job_card_ids': order.data.get('jobCardIds', [])} if order else None}
+    return {'id': str(quote.pk), 'document': quote.document, 'fulfillment': fulfillment, 'approved': manager_approved(quote), 'submitted_at': quote.submitted_at,
         'approved_at': quote.approved_at, 'created_at': quote.created_at,
         'rejected_at': quote.rejected_at, 'rejection_reason': quote.rejection_reason,
         'reviewed_by': (quote.rejected_by or quote.approved_by).get_username() if (quote.rejected_by_id or quote.approved_by_id) else None,
@@ -155,6 +159,8 @@ class QuotationViewSet(viewsets.GenericViewSet):
             if quote.approved_at is None:
                 quote.approved_at, quote.approved_by = timezone.now(), request.user
                 quote.save(update_fields=['approved_at', 'approved_by'])
+            from .fulfillment import create_fulfillment
+            create_fulfillment(quote, quote.approved_by, request.data.get('required_date'))
         return Response(quote_data(quote))
 
     @action(detail=True, methods=['post'])

@@ -1,9 +1,10 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from .models import WorkflowJob
 
 class OperationalAuthorityTests(TestCase):
+    @override_settings(NAVAPACK_OPERATIONAL_POLICY='')
     def test_unconfigured_operational_commands_are_closed_even_to_admin(self):
         actor = get_user_model().objects.create_superuser(username='synthetic-admin', password='synthetic')
         job = WorkflowJob.objects.create(data={})

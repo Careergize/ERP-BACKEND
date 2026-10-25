@@ -405,6 +405,28 @@ class ApprovalDecision(ImmutableEvidence):
         indexes = [models.Index(fields=['checker', 'decided_at'], name='decision_checker_time')]
 
 
+class SharedEntry(models.Model):
+    """Durable supporting records; never an alternative stock/approval posting API."""
+    key = models.CharField(max_length=80, primary_key=True)
+    content = models.JSONField()
+    version = models.PositiveBigIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='+')
+
+
+class EntryRevision(ImmutableEvidence):
+    entry = models.ForeignKey(SharedEntry, on_delete=models.PROTECT, related_name='revisions')
+    version = models.PositiveBigIntegerField()
+    command_id = models.UUIDField(unique=True)
+    content = models.JSONField()
+    content_hash = models.CharField(max_length=64)
+    actor = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='+')
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(ImmutableEvidence.Meta):
+        constraints = [models.UniqueConstraint(fields=['entry', 'version'], name='shared_entry_revision_unique')]
+
+
 class CommandReceipt(models.Model):
     command_id = models.UUIDField(primary_key=True)
     actor = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='+')

@@ -1,5 +1,14 @@
 # Navapack ERP backend
 
+## Quotation approval creates fulfillment — 25 October 2026
+
+For saved quotation-editor revisions, manager approval now atomically creates an approved Sales Order from the exact reviewed commercial snapshot. Existing-stock lines retain their finished-goods variant and create no Job Card. Custom manufacturing lines create a linked Job Card in PendingApproval, including the saved model recipe, route and planned costing. Mixed orders create manufacturing children only for custom lines. Managers must confirm a delivery date for manufacturing; an active customer master, saved stock variants/model revisions and valid recipe/route are required. Failed preparation rolls back approval and order creation. Retries reuse the same order and Job Card. Approval does not deduct stock, issue material, approve production or send messages. Existing dispatch checks remain in force.
+
+Approval responses expose the linked order and whether a manufacturing delivery date is required; the manager view shows the order link and fulfillment result. Creator lists recover the linked order on reload. Legacy standalone PDF snapshots without an editor draft retain approval-only behavior; order-origin quotations do not create duplicate orders. No historical approvals were backfilled. Customer-response recording remains separate; it is no longer a prerequisite to this approval-triggered order creation path.
+
+Validation: frontend TypeScript/build and quotation/persistence checks; 5 focused approval-fulfillment tests plus 25 existing quotation/draft/account tests on disposable SQLite. PostgreSQL concurrency was not exercised.
+
+
 ## Quotation-first orders and Sales Order approval — 23 October 2026
 
 Current flow: saved Quotation → Sales Order awaiting approval → Production Manager

@@ -64,7 +64,7 @@ class RegisterViewSet(viewsets.ModelViewSet):
         return Response({'can_create': request.user.has_perm(f'inventory.add_{model}'),
                          'can_edit': request.user.has_perm(f'inventory.change_{model}'),
                          'can_post': False,
-                         'posting_notice': 'Posting is unavailable until Procurement/Stores authority and approval mapping is confirmed.'})
+                         'posting_notice': 'Spare stock posting is unavailable until spare-specific posting permissions are confirmed.'})
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -99,4 +99,4 @@ class SpareViewSet(RegisterViewSet):
             return self.get_paginated_response(MovementSerializer(page, many=True).data)
         # No published authority mapping exists. Neither roles nor superuser status
         # can activate this operational command. The service is synthetic-tested only.
-        raise PermissionDenied('Stock posting unavailable pending approved authority mapping.')
+        raise PermissionDenied('Spare stock posting unavailable pending confirmed spare-specific posting permissions.')

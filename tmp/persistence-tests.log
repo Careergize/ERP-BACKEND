@@ -1,0 +1,156 @@
+SAFETY: dotenv skipped; DB=:memory:; test DB=:memory:; outbound connect blocked.
+Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+
+Found 65 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, messages, rest_framework, staticfiles
+  Apply all migrations: accounts, admin, auth, contenttypes, erp, inventory, quotations, sessions, token_blacklist
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0001_initial... OK
+  Applying auth.0002_alter_permission_name_max_length... OK
+  Applying auth.0003_alter_user_email_max_length... OK
+  Applying auth.0004_alter_user_username_opts... OK
+  Applying auth.0005_alter_user_last_login_null... OK
+  Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
+  Applying auth.0009_alter_user_last_name_max_length... OK
+  Applying auth.0010_alter_group_name_max_length... OK
+  Applying auth.0011_update_proxy_permissions... OK
+  Applying auth.0012_alter_user_first_name_max_length... OK
+  Applying accounts.0001_initial... OK
+  Applying quotations.0001_initial... OK
+  Applying erp.0001_initial... OK
+  Applying erp.0002_customer_contact_person_customer_creation_key_and_more... OK
+  Applying quotations.0002_quotation_customer_master... OK
+  Applying quotations.0003_quotation_submitted_at... OK
+  Applying quotations.0004_quotation_rejected_at_quotation_rejected_by_and_more... OK
+  Applying accounts.0002_alter_user_role_role_user_assigned_role... OK
+  Applying accounts.0003_seed_role_master... OK
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
+  Applying admin.0003_logentry_add_action_flag_choices... OK
+  Applying erp.0003_unit... OK
+  Applying erp.0004_seed_units... OK
+  Applying erp.0005_purchaseorder_purchaseorderline... OK
+  Applying erp.0006_purchase_permissions... OK
+  Applying erp.0007_finishedstockitem_purchaseorderline_stock_details_and_more... OK
+  Applying erp.0008_finished_stock_reference... OK
+  Applying erp.0009_purchaseorder_receipt_method_goodsreceivednote_and_more... OK
+  Applying erp.0010_grn_permissions... OK
+  Applying erp.0011_productionprocess_productionmodelrevision_and_more... OK
+  Applying erp.0012_workflow_permissions... OK
+  Applying erp.0013_productionmachine... OK
+  Applying erp.0014_workflowjob_request_id_alter_workflowjob_order... OK
+  Applying erp.0015_alter_workfloworder_options... OK
+  Applying quotations.0005_quotationdraft... OK
+  Applying quotations.0006_inactive_control_foundation... OK
+  Applying erp.0013_inactive_control_foundation... OK
+  Applying erp.0014_merge_task03a_productionmachine... OK
+  Applying erp.0016_merge_existing_workflow_heads... OK
+  Applying erp.0017_shared_entry_history... OK
+  Applying erp.0018_shared_entry_permissions... OK
+  Applying erp.0019_production_tracking_permission... OK
+  Applying inventory.0001_initial... OK
+  Applying inventory.0002_reference_inventory... OK
+  Applying inventory.0003_inventory_permissions... OK
+  Applying inventory.0004_procurementdelivery_procurementplanrevision_and_more... OK
+  Applying inventory.0005_normalize_saved_deliveries... OK
+  Applying inventory.0006_remove_procurementplan_deliveries... OK
+  Applying inventory.0007_delivery_history_view_permissions... OK
+  Applying inventory.0008_procurementplan_as_of_date_and_more... OK
+  Applying inventory.0009_procurementplan_procurement_stock_nonnegative... OK
+  Applying inventory.0010_spares_consumables... OK
+  Applying quotations.0006_order_quotation_permissions... OK
+  Applying quotations.0007_merge_existing_control_heads... OK
+  Applying sessions.0001_initial... OK
+  Applying token_blacklist.0001_initial... OK
+  Applying token_blacklist.0002_outstandingtoken_jti_hex... OK
+  Applying token_blacklist.0003_auto_20171017_2007... OK
+  Applying token_blacklist.0004_auto_20171017_2013... OK
+  Applying token_blacklist.0005_remove_outstandingtoken_jti... OK
+  Applying token_blacklist.0006_auto_20171017_2113... OK
+  Applying token_blacklist.0007_auto_20171017_2214... OK
+  Applying token_blacklist.0008_migrate_to_bigautofield... OK
+  Applying token_blacklist.0010_fix_migrate_to_bigautofield... OK
+  Applying token_blacklist.0011_linearizes_history... OK
+  Applying token_blacklist.0012_alter_outstandingtoken_user... OK
+test_costing_approval_freezes_the_server_checked_financial_snapshot (erp.test_operational_records.OperationalRecordTests.test_costing_approval_freezes_the_server_checked_financial_snapshot) ... ok
+test_dispatch_is_saved_across_accounts_and_retry_is_idempotent (erp.test_operational_records.OperationalRecordTests.test_dispatch_is_saved_across_accounts_and_retry_is_idempotent) ... ok
+test_invoice_server_checks_totals_and_prevents_duplicate_dispatch_billing (erp.test_operational_records.OperationalRecordTests.test_invoice_server_checks_totals_and_prevents_duplicate_dispatch_billing) ... ok
+test_manufactured_partial_receipts_cannot_exceed_the_same_authorized_lot (erp.test_operational_records.OperationalRecordTests.test_manufactured_partial_receipts_cannot_exceed_the_same_authorized_lot) ... ok
+test_multi_record_operation_is_atomic_and_bundle_retries_do_not_duplicate (erp.test_operational_records.OperationalRecordTests.test_multi_record_operation_is_atomic_and_bundle_retries_do_not_duplicate) ... ok
+test_qc_draft_submit_independent_review_release_and_reopen_rejection (erp.test_operational_records.OperationalRecordTests.test_qc_draft_submit_independent_review_release_and_reopen_rejection) ... ok
+test_reservation_checks_physical_and_batch_stock_without_movements (erp.test_operational_records.OperationalRecordTests.test_reservation_checks_physical_and_batch_stock_without_movements) ... ok
+test_stock_overdraw_mismatch_and_fake_receipts_are_rejected (erp.test_operational_records.OperationalRecordTests.test_stock_overdraw_mismatch_and_fake_receipts_are_rejected) ... ok
+test_tracking_persists_stage_progress_and_rejects_stale_version_and_scope_changes (erp.test_operational_records.OperationalRecordTests.test_tracking_persists_stage_progress_and_rejects_stale_version_and_scope_changes) ... ok
+test_wrong_role_cannot_submit_production_or_invoices (erp.test_operational_records.OperationalRecordTests.test_wrong_role_cannot_submit_production_or_invoices) ... ok
+test_currency_rate_append_only_and_validation (erp.test_shared_entries.SharedEntryTests.test_currency_rate_append_only_and_validation) ... ok
+test_inactive_account_and_unknown_scope_fail_closed (erp.test_shared_entries.SharedEntryTests.test_inactive_account_and_unknown_scope_fail_closed) ... ok
+test_malformed_data_cannot_create_a_record (erp.test_shared_entries.SharedEntryTests.test_malformed_data_cannot_create_a_record) ... ok
+test_malformed_nested_quality_data_is_rejected (erp.test_shared_entries.SharedEntryTests.test_malformed_nested_quality_data_is_rejected) ... ok
+test_management_history_filter_and_cursor (erp.test_shared_entries.SharedEntryTests.test_management_history_filter_and_cursor) ... ok
+test_no_release_or_approval_bypass_through_supporting_storage (erp.test_shared_entries.SharedEntryTests.test_no_release_or_approval_bypass_through_supporting_storage) ... ok
+test_permissions_and_anonymous_access (erp.test_shared_entries.SharedEntryTests.test_permissions_and_anonymous_access) ... ok
+test_quotation_workspaces_are_scoped_to_the_authenticated_author (erp.test_shared_entries.SharedEntryTests.test_quotation_workspaces_are_scoped_to_the_authenticated_author) ... ok
+test_read_scope_hides_commercial_records_from_qc (erp.test_shared_entries.SharedEntryTests.test_read_scope_hides_commercial_records_from_qc) ... ok
+test_retry_is_idempotent_and_changed_retry_conflicts (erp.test_shared_entries.SharedEntryTests.test_retry_is_idempotent_and_changed_retry_conflicts) ... ok
+test_revisions_are_retained_and_immutable (erp.test_shared_entries.SharedEntryTests.test_revisions_are_retained_and_immutable) ... ok
+test_role_label_without_server_capability_cannot_write (erp.test_shared_entries.SharedEntryTests.test_role_label_without_server_capability_cannot_write) ... ok
+test_save_reload_other_account_and_management_history (erp.test_shared_entries.SharedEntryTests.test_save_reload_other_account_and_management_history) ... ok
+test_stale_write_cannot_replace_another_users_change (erp.test_shared_entries.SharedEntryTests.test_stale_write_cannot_replace_another_users_change) ... ok
+test_unconfigured_operational_commands_are_closed_even_to_admin (erp.test_operational_authority.OperationalAuthorityTests.test_unconfigured_operational_commands_are_closed_even_to_admin) ... ok
+test_admin_can_approve_sales_order (erp.test_production_workflow.ProductionWorkflowTests.test_admin_can_approve_sales_order) ... ok
+test_converted_quotation_is_api_saved_with_metadata_and_does_not_duplicate (erp.test_production_workflow.ProductionWorkflowTests.test_converted_quotation_is_api_saved_with_metadata_and_does_not_duplicate) ... ok
+test_deferred_job_rechecks_existing_stock (erp.test_production_workflow.ProductionWorkflowTests.test_deferred_job_rechecks_existing_stock) ... ok
+test_existing_item_manufacturing_requires_known_zero_stock (erp.test_production_workflow.ProductionWorkflowTests.test_existing_item_manufacturing_requires_known_zero_stock) ... ok
+test_issue_before_approval_overissue_unknown_stock_and_unauthorized_actors_fail (erp.test_production_workflow.ProductionWorkflowTests.test_issue_before_approval_overissue_unknown_stock_and_unauthorized_actors_fail) ... ok
+test_manual_job_validation_and_permissions (erp.test_production_workflow.ProductionWorkflowTests.test_manual_job_validation_and_permissions) ... ok
+test_manual_job_without_order_is_persisted_idempotent_and_reviewable (erp.test_production_workflow.ProductionWorkflowTests.test_manual_job_without_order_is_persisted_idempotent_and_reviewable) ... ok
+test_manual_order_workflows_and_saved_machine_compatibility (erp.test_production_workflow.ProductionWorkflowTests.test_manual_order_workflows_and_saved_machine_compatibility) ... ok
+test_manual_workflow_rejects_empty_unknown_or_incompatible_machines (erp.test_production_workflow.ProductionWorkflowTests.test_manual_workflow_rejects_empty_unknown_or_incompatible_machines) ... ok
+test_optional_allocation_and_safe_order_retry (erp.test_production_workflow.ProductionWorkflowTests.test_optional_allocation_and_safe_order_retry) ... ok
+test_order_numbers_are_automatic_and_b2c_retains_quotation_prices (erp.test_production_workflow.ProductionWorkflowTests.test_order_numbers_are_automatic_and_b2c_retains_quotation_prices) ... ok
+test_planned_costing_is_created_and_blocks_unreviewed_production (erp.test_production_workflow.ProductionWorkflowTests.test_planned_costing_is_created_and_blocks_unreviewed_production) ... ok
+test_planned_costing_vat_exchange_units_and_led_higher_rule (erp.test_production_workflow.ProductionWorkflowTests.test_planned_costing_vat_exchange_units_and_led_higher_rule) ... ok
+test_quotation_conversion_does_not_create_second_quotation (erp.test_production_workflow.ProductionWorkflowTests.test_quotation_conversion_does_not_create_second_quotation) ... ok
+test_quotation_first_and_manager_approval_create_exactly_one_job (erp.test_production_workflow.ProductionWorkflowTests.test_quotation_first_and_manager_approval_create_exactly_one_job) ... ok
+test_receptionist_model_requirements_pm_edit_approve_and_store_issue_across_sessions (erp.test_production_workflow.ProductionWorkflowTests.test_receptionist_model_requirements_pm_edit_approve_and_store_issue_across_sessions) ... ok
+test_reusable_manual_processes_and_product_specific_order (erp.test_production_workflow.ProductionWorkflowTests.test_reusable_manual_processes_and_product_specific_order) ... ok
+test_sales_options_use_saved_customers_active_staff_and_latest_models (erp.test_production_workflow.ProductionWorkflowTests.test_sales_options_use_saved_customers_active_staff_and_latest_models) ... ok
+test_saved_quotation_commercial_details_cannot_be_changed_in_order (erp.test_production_workflow.ProductionWorkflowTests.test_saved_quotation_commercial_details_cannot_be_changed_in_order) ... ok
+test_stock_only_and_mixed_orders_never_manufacture_stock_lines (erp.test_production_workflow.ProductionWorkflowTests.test_stock_only_and_mixed_orders_never_manufacture_stock_lines) ... ok
+test_unconfigured_or_wrong_output_units_rollback_order_creation (erp.test_production_workflow.ProductionWorkflowTests.test_unconfigured_or_wrong_output_units_rollback_order_creation) ... ok
+test_email_has_real_pdf_attachment (quotations.tests.QuotationTests.test_email_has_real_pdf_attachment) ... ok
+test_entered_price_precision_is_preserved_in_snapshot (quotations.tests.QuotationTests.test_entered_price_precision_is_preserved_in_snapshot) ... ok
+test_exclusive_tax (quotations.tests.QuotationTests.test_exclusive_tax) ... ok
+test_extracts_persisted_order_contact_and_line_details (quotations.tests.QuotationTests.test_extracts_persisted_order_contact_and_line_details) ... ok
+test_manager_must_have_permission_and_submission (quotations.tests.QuotationTests.test_manager_must_have_permission_and_submission) ... ok
+test_missing_configuration_and_invalid_recipient_send_nothing (quotations.tests.QuotationTests.test_missing_configuration_and_invalid_recipient_send_nothing) ... ok
+test_only_selected_channel_and_retries_do_not_duplicate (quotations.tests.QuotationTests.test_only_selected_channel_and_retries_do_not_duplicate) ... ok
+test_partial_results_and_unknown_are_preserved (quotations.tests.QuotationTests.test_partial_results_and_unknown_are_preserved) ... ok
+test_pdf_and_no_unapproved_send (quotations.tests.QuotationTests.test_pdf_and_no_unapproved_send) ... ok
+test_permission_denied (quotations.tests.QuotationTests.test_permission_denied) ... ok
+test_reference_total_snapshot_redaction_and_idempotent_create (quotations.tests.QuotationTests.test_reference_total_snapshot_redaction_and_idempotent_create) ... ok
+test_sales_cannot_bypass_manager_approval (quotations.tests.QuotationTests.test_sales_cannot_bypass_manager_approval) ... ok
+test_validation (quotations.tests.QuotationTests.test_validation) ... ok
+test_whatsapp_uploads_document_and_submits_template (quotations.tests.QuotationTests.test_whatsapp_uploads_document_and_submits_template) ... ok
+test_drafts_are_owner_scoped (quotations.test_drafts.DraftPersistenceTests.test_drafts_are_owner_scoped) ... ok
+test_incomplete_draft_can_be_saved_and_forged_approval_is_discarded (quotations.test_drafts.DraftPersistenceTests.test_incomplete_draft_can_be_saved_and_forged_approval_is_discarded) ... ok
+test_save_edits_same_row_with_version_and_rejects_stale_edit (quotations.test_drafts.DraftPersistenceTests.test_save_edits_same_row_with_version_and_rejects_stale_edit) ... ok
+test_saved_draft_reloads_in_new_session_with_source_details (quotations.test_drafts.DraftPersistenceTests.test_saved_draft_reloads_in_new_session_with_source_details) ... ok
+test_submitted_draft_is_frozen_and_new_revision_is_saved_separately (quotations.test_drafts.DraftPersistenceTests.test_submitted_draft_is_frozen_and_new_revision_is_saved_separately) ... ok
+
+----------------------------------------------------------------------
+Ran 65 tests in 47.718s
+
+OK
+Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+
+  Applying token_blacklist.0013_alter_blacklistedtoken_options_and_more... OK
+System check identified no issues (0 silenced).

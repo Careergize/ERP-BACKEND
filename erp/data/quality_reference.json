@@ -1,0 +1,421 @@
+{
+  "templates": [
+    {
+      "id": "personnel-safety",
+      "name": "Personnel Safety Checklist",
+      "category": "safety",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Quality",
+      "frequency": "per_activity",
+      "applicable": "",
+      "active": true,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "check-1",
+          "label": "Personnel wearing correct protective clothing",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-2",
+          "label": "No eating or drinking in the processing area",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-3",
+          "label": "No smoking in the processing area",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-4",
+          "label": "No jewellery, watches or hanging items",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-5",
+          "label": "No personal belongings in the processing area",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-6",
+          "label": "Personnel in good health without visible signs of contagious illness",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-7",
+          "label": "Personnel operating in a safe environment",
+          "type": "tick_cross",
+          "acceptable": "Tick",
+          "required": true,
+          "allowNA": true
+        }
+      ],
+      "source": "User task transcription; eight photographs unavailable. Document code unrecorded; verify before operational use."
+    },
+    {
+      "id": "extruded-rolls",
+      "name": "Material Sample Test — Extruded Rolls",
+      "category": "production",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Quality",
+      "frequency": "per_batch",
+      "applicable": "",
+      "active": true,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "check-1",
+          "label": "Roll width matches Sales Order",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-2",
+          "label": "Material matches Sales Order",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-3",
+          "label": "Material colour matches Sales Order",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-4",
+          "label": "Printed roll treated where required",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-5",
+          "label": "Roll thickness matches specification",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-6",
+          "label": "Printed colours match approved instructions",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-7",
+          "label": "Objectionable odour present",
+          "type": "yes_no",
+          "acceptable": "No",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-8",
+          "label": "Tubing opens freely",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-9",
+          "label": "Physical appearance acceptable",
+          "type": "yes_no",
+          "acceptable": "Yes",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "actual-width",
+          "label": "Actual roll width / specification",
+          "type": "numeric",
+          "measurementUnit": "mm",
+          "required": true,
+          "allowNA": false
+        },
+        {
+          "id": "actual-thickness",
+          "label": "Actual thickness / specification",
+          "type": "numeric",
+          "measurementUnit": "micron",
+          "required": true,
+          "allowNA": false
+        }
+      ],
+      "source": "User task transcription; eight photographs unavailable. Document code unrecorded; verify before operational use."
+    },
+    {
+      "id": "weekly-extruder",
+      "name": "Weekly Extruder Machine Checklist",
+      "category": "machine",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Maintenance",
+      "frequency": "weekly",
+      "applicable": "extruder",
+      "active": true,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "check-1",
+          "label": "Electrical Panel",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-2",
+          "label": "Gearbox Oil",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-3",
+          "label": "Bearings",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-4",
+          "label": "Sprocket / Chain",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-5",
+          "label": "Motor Pulley and Belts",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-6",
+          "label": "Rollers",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        }
+      ],
+      "source": "User task transcription; eight photographs unavailable. Document code unrecorded; verify before operational use."
+    },
+    {
+      "id": "weekly-recycle-extruder",
+      "name": "Weekly Recycle Extruder Checklist",
+      "category": "machine",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Maintenance",
+      "frequency": "weekly",
+      "applicable": "recycle_extruder",
+      "active": true,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "check-1",
+          "label": "Electrical Panel",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-2",
+          "label": "Gearbox Oil",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-3",
+          "label": "Bearings",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-4",
+          "label": "Hydraulic Unit",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-5",
+          "label": "Motor Pulley and Belts",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-6",
+          "label": "Screen Changer",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        }
+      ],
+      "source": "User task transcription; eight photographs unavailable. Document code unrecorded; verify before operational use."
+    },
+    {
+      "id": "factory-cleaning",
+      "name": "Factory/General Area Cleaning Checklist",
+      "category": "cleaning",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Quality",
+      "frequency": "per_activity",
+      "applicable": "",
+      "active": true,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "observations",
+          "label": "Cleaning observations / outcome (digital review field)",
+          "type": "text",
+          "required": true,
+          "allowNA": false
+        }
+      ],
+      "source": "User task transcription; eight photographs unavailable. Document code unrecorded; verify before operational use."
+    },
+    {
+      "id": "raw-receipt",
+      "name": "Raw Material Receipt and Analysis Record",
+      "category": "raw",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Quality",
+      "frequency": "per_receipt",
+      "applicable": "",
+      "active": true,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "check-1",
+          "label": "Appearance",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-2",
+          "label": "Colour",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        },
+        {
+          "id": "check-3",
+          "label": "Packaging Integrity",
+          "type": "ok_not_ok",
+          "acceptable": "OK",
+          "required": true,
+          "allowNA": true
+        }
+      ],
+      "source": "User task transcription; eight photographs unavailable. Document code unrecorded; verify before operational use."
+    },
+    {
+      "id": "ksec",
+      "name": "KSEC — checks and meaning pending clarification",
+      "category": "safety",
+      "revision": 1,
+      "effectiveDate": "2026-10-13",
+      "department": "Quality",
+      "frequency": "on_demand",
+      "applicable": "",
+      "active": false,
+      "approvalRequired": true,
+      "items": [
+        {
+          "id": "ksec-pending",
+          "label": "Client-confirmed checklist required before activation",
+          "type": "text",
+          "required": true,
+          "allowNA": false
+        }
+      ],
+      "source": "Undefined client term. Admin must configure confirmed checks, category and frequency before activation."
+    }
+  ],
+  "areas": [
+    {
+      "id": "area-1",
+      "name": "Office"
+    },
+    {
+      "id": "area-2",
+      "name": "Main Production — Extruder Section"
+    },
+    {
+      "id": "area-3",
+      "name": "Main Production — Bag Making Section"
+    },
+    {
+      "id": "area-4",
+      "name": "Finished Goods Store"
+    },
+    {
+      "id": "area-5",
+      "name": "Material Store"
+    },
+    {
+      "id": "area-6",
+      "name": "Toilets"
+    },
+    {
+      "id": "area-7",
+      "name": "General Areas"
+    },
+    {
+      "id": "area-8",
+      "name": "Reception"
+    }
+  ]
+}
