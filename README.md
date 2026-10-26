@@ -1,5 +1,15 @@
 # Navapack ERP backend
 
+## Recycling Module 2 — 26 October 2026
+
+Recycled Materials persists daily bag entries and a separate append-only material
+catalog using existing versioned shared entries. `/api/recycling/materials/report/`
+returns monthly daily bags, kg (40/bag), values by currency and Excel downloads.
+Corrections/voids preserve history. This register does not post raw stock or consume
+purchased waste. Six new API tests plus seven Module 1 regressions pass on disposable
+SQLite; checks/drift pass. PostgreSQL concurrency and deployment remain pending.
+See [scope and contract](../ERP-Navapack-frontend/frontend/docs/recycled-materials.md).
+
 ## Quotation approval creates fulfillment — 25 October 2026
 
 For saved quotation-editor revisions, manager approval now atomically creates an approved Sales Order from the exact reviewed commercial snapshot. Existing-stock lines retain their finished-goods variant and create no Job Card. Custom manufacturing lines create a linked Job Card in PendingApproval, including the saved model recipe, route and planned costing. Mixed orders create manufacturing children only for custom lines. Managers must confirm a delivery date for manufacturing; an active customer master, saved stock variants/model revisions and valid recipe/route are required. Failed preparation rolls back approval and order creation. Retries reuse the same order and Job Card. Approval does not deduct stock, issue material, approve production or send messages. Existing dispatch checks remain in force.

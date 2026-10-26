@@ -14,6 +14,7 @@ from erp import production_workflow as workflow
 from erp.order_drafts import DraftAPI, DraftDetail, DraftHistory
 from erp.shared_entries import SharedEntries, SharedEntryDetail, SharedEntryCommands, ManagementActivity, CostingSummary, RecyclingRecords
 from erp.recycling_purchases import PurchaseReport
+from erp.recycled_materials import RecycledMaterialReport
 
 from inventory.catalog_api import SpareViewSet, ConsumableViewSet
 
@@ -36,6 +37,7 @@ router.register('users', ManagedUserViewSet)
 from erp.job_drafts import JobDraftAPI, JobDraftDetail, JobDraftHistory
 
 urlpatterns = [
+    path('api/recycling/materials/report/', RecycledMaterialReport.as_view()),
     path('api/recycling/purchases/report/', PurchaseReport.as_view()),
     path('api/costing/', CostingSummary.as_view()),
     path('api/recycling/<str:kind>/', RecyclingRecords.as_view()),
