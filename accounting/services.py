@@ -76,7 +76,7 @@ def journal(doc, code, signed, party=None, foreign=ZERO):
 
 def outstanding(doc, as_of=None):
     rows = doc.settlements.select_related('payment').all()
-    allocated = sum((a.amount for a in rows if (not as_of or a.payment.date <= as_of) and (not hasattr(a.payment,'reversal') or (as_of and a.payment.reversal.date > as_of))), ZERO)
+    allocated = sum((a.amount for a in rows if (not as_of or (a.date or a.payment.date) <= as_of) and (not hasattr(a.payment,'reversal') or (as_of and a.payment.reversal.date > as_of))), ZERO)
     return doc.total - allocated
 
 
@@ -115,7 +115,7 @@ def post(payload, user, source=None):
     if source:
         require(not Document.objects.filter(source=source).exists(), 'This source document is already posted.')
     kind = payload.get('kind')
-    require(kind in {'invoice', 'bill', 'receipt', 'payment', 'expense', 'transfer', 'opening', 'stock-receipt', 'stock-issue', 'reverse'}, 'Unsupported accounting command.')
+    require(kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate', 'expense', 'transfer', 'opening', 'stock-receipt', 'stock-issue', 'reverse'}, 'Unsupported accounting command.')
     when = day(payload.get('date'))
     require(when >= book.start_date and (not book.closed_through or when > book.closed_through), 'Date is before cutover or in a closed period.')
     currency = payload.get('currency', book.currency)
@@ -124,9 +124,9 @@ def post(payload, user, source=None):
     require(currency == book.currency or 'fx' in payload, 'An explicit exchange rate is required for foreign currency.')
     require(currency != book.currency or fx == 1, 'Reporting currency exchange rate must be 1.')
     party = None
-    if kind in {'invoice', 'bill', 'receipt', 'payment'}:
+    if kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate'}:
         party = Party.objects.filter(pk=payload.get('party')).first()
-        require(party is not None and party.kind == ('customer' if kind in {'invoice', 'receipt'} else 'supplier'), 'Select the correct customer or supplier.')
+        require(party is not None and (kind=='allocate' or party.kind == ('customer' if kind in {'invoice', 'receipt'} else 'supplier')), 'Select the correct customer or supplier.')
     doc = Document.objects.create(command=command, digest=digest, source=source, kind=kind,
         number=text(payload.get('number'), 80), date=when, currency=currency, fx=fx, party=party,
         total=0, notes=str(payload.get('notes', ''))[:2000], actor=user,
@@ -143,7 +143,9 @@ def post(payload, user, source=None):
             line = DocumentLine.objects.create(document=doc, item=str(row.get('item', ''))[:120],
                 description=text(row.get('description')), quantity=qty, unit=str(row.get('unit', ''))[:30], price=price, net=net, tax=tax)
             if kind == 'invoice':
-                journal(doc, '4100', -money(net * fx)); journal(doc, '2200', -money(tax * fx))
+                tax_account=row.get('taxAccount','2200') if source else '2200'
+                require(account(tax_account).kind=='liability','Sales tax must map to a liability account.')
+                journal(doc, '4100', -money(net * fx)); journal(doc, tax_account, -money(tax * fx))
             else:
                 target = row.get('account', '6100')
                 a = account(target)
@@ -155,19 +157,26 @@ def post(payload, user, source=None):
         control = '1300' if kind == 'invoice' else '2100' if kind == 'bill' else account(payload.get('cashAccount'), cash=True).pk
         signed = money(doc.total * fx) * (1 if kind == 'invoice' else -1)
         journal(doc, control, signed, party, doc.total * (1 if kind == 'invoice' else -1))
-    elif kind in {'receipt', 'payment'}:
-        doc.total = dec(payload.get('amount'), positive=True)
-        cash = account(payload.get('cashAccount'), cash=True)
-        sign = 1 if kind == 'receipt' else -1
-        journal(doc, cash.pk, money(doc.total * fx) * sign)
+    elif kind in {'receipt', 'payment', 'allocate'}:
+        payment_doc=doc
+        if kind=='allocate':
+            payment_doc=Document.objects.select_for_update().filter(pk=payload.get('paymentDocument'),kind__in=['receipt','payment'],party=party,currency=currency,reversal__isnull=True).first()
+            require(payment_doc is not None and payment_doc.date<=when and payment_doc.fx==fx,'Select an earlier active payment with the same party, currency and original FX rate.')
+            doc.total=ZERO
+            sign=1 if payment_doc.kind=='receipt' else -1
+        else:
+            doc.total = dec(payload.get('amount'), positive=True)
+            cash = account(payload.get('cashAccount'), cash=True)
+            sign = 1 if kind == 'receipt' else -1
+            journal(doc, cash.pk, money(doc.total * fx) * sign)
         # Full payment is recorded in the party control, with unapplied amounts
         # remaining explicit customer/supplier advances in the party ledger.
-        journal(doc, '1300' if sign == 1 else '2100', -money(doc.total * fx) * sign, party, -doc.total * sign)
+        if kind!='allocate':journal(doc, '1300' if sign == 1 else '2100', -money(doc.total * fx) * sign, party, -doc.total * sign)
         allocations = payload.get('allocations', [])
         require(isinstance(allocations, list) and len(allocations) <= 200, 'Invalid allocations.')
         used = ZERO
         for row in allocations:
-            bill = Document.objects.select_for_update().filter(pk=row.get('bill'), kind='invoice' if kind == 'receipt' else 'bill', party=party, currency=currency, reversal__isnull=True).first()
+            bill = Document.objects.select_for_update().filter(pk=row.get('bill'), kind='invoice' if sign==1 else 'bill', party=party, currency=currency, reversal__isnull=True).first()
             require(bill is not None and bill.date <= when, 'Allocate only to an active earlier invoice/bill for this party and currency.')
             n = dec(row.get('amount'), positive=True)
             require(n <= outstanding(bill), 'Allocation exceeds the outstanding invoice/bill balance.')
@@ -177,13 +186,17 @@ def post(payload, user, source=None):
                 require(item is not None, 'Allocation item must belong to the selected bill.')
                 previous = Allocation.objects.filter(item_line=item, payment__reversal__isnull=True).aggregate(n=Sum('amount'))['n'] or ZERO
                 require(n + previous <= item.net + item.tax, 'Item allocation exceeds its value.')
-            Allocation.objects.create(payment=doc, bill=bill, item_line=item, amount=n)
+            Allocation.objects.create(payment=payment_doc, bill=bill, item_line=item, amount=n,date=when,recorded_document=doc)
             used += n
             # Settle historical base-currency receivables/payables at bill rate.
             delta = money(n * fx) - money(n * bill.fx)
             journal(doc, '1300' if sign == 1 else '2100', delta * sign, party)
             journal(doc, '4200', -delta * sign)
-        require(used <= doc.total, 'Allocations exceed payment amount.')
+        if kind=='allocate':
+            require(used>0,'Select at least one allocation.')
+            allocated=payment_doc.allocations.aggregate(n=Sum('amount'))['n'] or ZERO
+            require(allocated<=payment_doc.total,'Allocations exceed the original payment amount.')
+        else:require(used <= doc.total, 'Allocations exceed payment amount.')
     elif kind == 'transfer':
         doc.total = dec(payload.get('amount'), positive=True)
         require(currency == book.currency, 'Cash transfers currently require reporting currency.')
@@ -217,18 +230,31 @@ def post(payload, user, source=None):
         original = Document.objects.select_for_update().filter(pk=payload.get('document')).first()
         require(original is not None and original.kind != 'reverse' and not Document.objects.filter(reversal_of=original).exists() and when >= original.date, 'Select an unreversed original document dated on or before reversal.')
         require(not original.settlements.filter(payment__reversal__isnull=True).exists(), 'Reverse allocated payments before reversing an invoice/bill.')
-        require(not original.valuations.exists(), 'Inventory reversal requires a separately valued correction; historical averages cannot be undone blindly.')
+        require(original.kind!='allocate', 'Reverse the original payment to undo its allocations.')
+        for movement in original.valuations.select_related('stock'):
+            stock=StockValue.objects.select_for_update().get(pk=movement.stock_id)
+            require(when>=stock.last_date,'Inventory reversal cannot precede later valuation movements.')
+            if movement.quantity>0:
+                require(not ValueMovement.objects.filter(stock=stock,pk__gt=movement.pk).exists(),'Receipt reversal requires no subsequent valuation movements; use a reviewed supplier return workflow otherwise.')
+            require(stock.quantity-movement.quantity>=0 and stock.value-movement.value>=0,'Reversal exceeds available valued stock.')
+            stock.quantity-=movement.quantity;stock.value-=movement.value;stock.last_date=when;stock.save()
+            ValueMovement.objects.create(document=doc,stock=stock,quantity=-movement.quantity,value=-movement.value)
         require(bool(doc.notes.strip()), 'A reversal reason is required.')
         doc.reversal_of = original; doc.total = original.total; doc.currency = original.currency; doc.fx = original.fx; doc.party = original.party; doc.cash_class = original.cash_class
         for line in original.journal.all():
             journal(doc, line.account_id, line.credit-line.debit, line.party, -line.foreign_amount)
+        # Later application of an advance can have its own FX settlement journal.
+        # Reverse those differences together with the original payment.
+        for allocation_doc in Document.objects.filter(allocation_commands__payment=original).exclude(pk=original.pk).distinct():
+            for line in allocation_doc.journal.all():
+                journal(doc,line.account_id,line.credit-line.debit,line.party,-line.foreign_amount)
     balances = doc.journal.aggregate(dr=Sum('debit'), cr=Sum('credit'))
     # Explicit rounding account handles only cent differences produced by line FX.
     diff = (balances['dr'] or ZERO) - (balances['cr'] or ZERO)
     if diff and kind in {'invoice','bill','expense'} and abs(diff) <= CENT * 200:
         journal(doc, '4200', -diff)
     balances = doc.journal.aggregate(dr=Sum('debit'), cr=Sum('credit'))
-    require(balances['dr'] and balances['dr'] == balances['cr'], 'Journal must balance and contain a nonzero posting.')
+    require((kind=='allocate' and not balances['dr'] and not balances['cr']) or (balances['dr'] and balances['dr'] == balances['cr']), 'Journal must balance and contain a nonzero posting.')
     require(doc.total <= Decimal('1e20'), 'Document total exceeds the supported range.')
     doc.save()
     return doc

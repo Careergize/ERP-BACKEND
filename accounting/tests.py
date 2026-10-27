@@ -6,7 +6,7 @@ from django.core.cache import cache
 from rest_framework.test import APITestCase
 from accounts.models import Role
 from .models import Account, Document, JournalLine, Allocation, StockValue, PostingEvent
-from .integration import enqueue
+from .integration import enqueue, shared_saved
 
 
 class AccountingTests(APITestCase):
@@ -137,3 +137,79 @@ class AccountingTests(APITestCase):
         self.assertEqual(self.invoice().status_code,403)
         self.client.force_authenticate(None)
         self.assertEqual(self.client.get('/api/accounting/setup/').status_code,401)
+
+    def test_saved_invoice_auto_posting_and_foreign_queue(self):
+        from erp.models import WorkflowOrder
+        order=WorkflowOrder.objects.create(request_id=uuid4(),created_by=self.admin,data={'customerId':'customer-123'})
+        row={'id':'source-invoice','orderId':order.pk,'buyer':'Source customer','number':'SOURCE-INV','date':'2026-02-01',
+             'currency':'UGX','total':108,'tax':8,'items':[{'itemId':'p1','description':'Source item','quantity':1,'unit':'kg','rate':120,'amount':120}]}
+        shared_saved('invoices',[row],None,self.admin)
+        doc=Document.objects.get(source='invoice:source-invoice')
+        self.assertEqual(doc.total,Decimal('108'))
+        self.assertEqual(doc.items.get().net,Decimal('100'))
+        shared_saved('invoices',[row],None,self.admin)
+        self.assertEqual(Document.objects.filter(source=doc.source).count(),1)
+        other={**row,'id':'foreign-source','number':'SOURCE-FOREIGN','currency':'USD'}
+        shared_saved('invoices',[other],None,self.admin)
+        self.assertTrue(PostingEvent.objects.get(pk='invoice:foreign-source').error)
+
+    def test_supplier_bill_matches_po_partial_and_rejects_overbilling(self):
+        from erp.models import PurchaseOrder, PurchaseOrderLine
+        order=PurchaseOrder.objects.create(request_id=uuid4(),supplier_name='Supplier A',order_date='2026-02-01',currency='UGX',created_by=self.admin,receipt_method='grn')
+        line=PurchaseOrderLine.objects.create(order=order,description='Purchase item',unit='kg',quantity='10',unit_price='5')
+        p={'commandId':str(uuid4()),'purchaseOrder':order.pk,'number':'SUPPLIER-001','date':'2026-02-02','party':self.supplier,'fx':'1','quantities':{str(line.pk):'4'}}
+        r=self.client.post('/api/accounting/purchase-bills/',p,format='json');self.assertEqual(r.status_code,201,r.data)
+        self.assertEqual(r.data['total'],'20.00')
+        self.assertEqual(self.client.post('/api/accounting/purchase-bills/',p,format='json').status_code,200)
+        changed=deepcopy(p);changed['quantities'][str(line.pk)]='5'
+        self.assertEqual(self.client.post('/api/accounting/purchase-bills/',changed,format='json').status_code,400)
+        changed.update(commandId=str(uuid4()),number='SUPPLIER-002');changed['quantities'][str(line.pk)]='7'
+        self.assertEqual(self.client.post('/api/accounting/purchase-bills/',changed,format='json').status_code,400)
+        result=self.client.get('/api/accounting/purchase-bills/').data
+        self.assertEqual(Decimal(result[0]['lines'][0]['remaining']),Decimal('6'))
+
+    def test_raw_movement_signal_captures_missing_cost(self):
+        from inventory.models import RawMaterial, RawMovement
+        material=RawMaterial.objects.create(id='finance-raw',name='Synthetic material',family='Test',category='virgin',unit='kg',opening_stock=0,opening_date='2026-01-01')
+        RawMovement.objects.create(id='finance-move',material=material,date='2026-02-01',movement_type='IN',quantity='5',created_by=self.admin)
+        e=PostingEvent.objects.get(pk='raw-movement:finance-move')
+        self.assertIsNone(e.document_id);self.assertTrue(e.error)
+
+    def test_historical_outstanding_and_valuation_are_as_of_end(self):
+        inv=self.invoice()
+        self.command('receipt',date='2026-03-01',party=self.customer,amount='220',cashAccount='1100',allocations=[{'bill':inv.data['id'],'amount':'220'}])
+        self.command('stock-receipt',item='raw:test',unit='kg',quantity='10',value='100',contra='3100')
+        self.command('stock-issue',item='raw:test',unit='kg',quantity='5',date='2026-03-01')
+        data=self.report()
+        self.assertEqual(next(d for d in data['documents'] if d['kind']=='invoice')['outstanding'],'220.00')
+        self.assertEqual(Decimal(data['inventory'][0]['quantity']),Decimal('10'))
+
+    def test_advance_can_be_allocated_later_and_reversed_with_fx(self):
+        receipt=self.command('receipt',date='2026-02-01',currency='USD',fx='3',party=self.customer,amount='220',cashAccount='1100')
+        inv=self.invoice(currency='USD',fx='2',date='2026-02-05')
+        r=self.command('allocate',date='2026-02-06',currency='USD',fx='3',party=self.customer,paymentDocument=receipt.data['id'],allocations=[{'bill':inv.data['id'],'amount':'220'}])
+        self.assertEqual(r.status_code,201,r.data)
+        self.assertEqual(self.report(party=self.customer)['ledgerClosing'],'0.00')
+        self.assertEqual(self.command('allocate',date='2026-02-07',currency='USD',fx='3',party=self.customer,paymentDocument=receipt.data['id'],allocations=[{'bill':inv.data['id'],'amount':'1'}]).status_code,400)
+        reverse=self.command('reverse',date='2026-02-10',document=receipt.data['id'],notes='Advance refunded')
+        self.assertEqual(reverse.status_code,201,reverse.data)
+        self.assertEqual(self.report(party=self.customer)['ledgerClosing'],'440.00')
+        self.assertEqual(self.report()['profitLoss']['income'],'400.00')
+
+    def test_journal_evidence_cannot_be_edited_and_led_requires_mapping(self):
+        doc=self.invoice();line=JournalLine.objects.filter(document_id=doc.data['id']).first()
+        with self.assertRaises(ValueError):JournalLine.objects.filter(pk=line.pk).update(debit=999)
+        line.debit=999
+        with self.assertRaises(ValueError):line.save()
+        original=Document.objects.get(pk=doc.data['id']);original.total=99
+        with self.assertRaises(ValueError):original.save()
+        r=self.client.post('/api/accounting/tax-mapping/',{'ledAccount':'2200'},format='json')
+        self.assertEqual(r.status_code,200,r.data)
+
+    def test_cogs_reversal_returns_original_cost(self):
+        self.command('stock-receipt',item='finished:test',unit='pcs',quantity='10',value='100',contra='3100')
+        issue=self.command('stock-issue',item='finished:test',unit='pcs',quantity='5',date='2026-02-02')
+        r=self.command('reverse',document=issue.data['id'],date='2026-02-03',notes='Customer returned goods')
+        self.assertEqual(r.status_code,201,r.data)
+        s=StockValue.objects.get(pk='finished:test');self.assertEqual(s.quantity,Decimal('10'));self.assertEqual(s.value,Decimal('100'))
+        self.assertEqual(self.report()['profitLoss']['expenses'],'0.00')

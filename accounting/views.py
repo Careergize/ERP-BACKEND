@@ -17,7 +17,7 @@ class Bootstrap(APIView):
     def get(self, request):
         access(request.user)
         b = Book.objects.first()
-        return Response({'book': {'company':b.company,'currency':b.currency,'startDate':str(b.start_date),'fiscalMonth':b.fiscal_month,'valuation':b.valuation,'closedThrough':str(b.closed_through) if b.closed_through else ''} if b else None,
+        return Response({'book': {'company':b.company,'currency':b.currency,'startDate':str(b.start_date),'fiscalMonth':b.fiscal_month,'valuation':b.valuation,'ledAccount':b.led_account,'closedThrough':str(b.closed_through) if b.closed_through else ''} if b else None,
             'accounts':list(Account.objects.order_by('code').values('code','name','kind','cash','control')),
             'parties':list(Party.objects.order_by('name').values('id','name','kind','source')),
             'canWrite':request.user.is_superuser or request.user.effective_role in {'admin','accounts'},
@@ -104,8 +104,15 @@ class PostingQueue(APIView):
         # Only genuinely absent inputs may be supplied; source quantities/prices
         # and identities cannot be overwritten from the accounting screen.
         if p.get('blocked'):
-            require(p.get('blocked','').startswith('Map this invoice'), p['blocked'])
-            p['party']=request.data.get('party'); p.pop('blocked')
+            if p['blocked'].startswith('LED account'):
+                b=Book.objects.first()
+                require(bool(b.led_account),'Configure the LED liability account in Setup first.')
+                for row in p['items']:
+                    if row.get('description')=='LED levy':row['taxAccount']=b.led_account
+                p.pop('blocked')
+            else:
+                require(p.get('blocked','').startswith('Map this invoice'), p['blocked'])
+                p['party']=request.data.get('party'); p.pop('blocked')
         if p.get('currency') and Book.objects.first().currency != p['currency']:
             p['fx']=request.data.get('fx')
             if p['kind']=='stock-receipt':
@@ -116,6 +123,19 @@ class PostingQueue(APIView):
         d=post(p,e.actor,source=e.source)
         e.document=d; e.error=''; e.payload=p; e.save(update_fields=['document','error','payload'])
         return Response(document_data(d))
+
+
+class TaxMapping(APIView):
+    @transaction.atomic
+    def post(self,request):
+        access(request.user,admin=True)
+        from .services import account
+        b=Book.objects.select_for_update().filter(pk=1).first()
+        require(b is not None,'Configure accounting first.')
+        code=request.data.get('ledAccount')
+        require(account(code).kind=='liability','LED must map to a liability account.')
+        b.led_account=code;b.save(update_fields=['led_account'])
+        return Response({'ledAccount':code})
 
 
 class ImportMasters(APIView):

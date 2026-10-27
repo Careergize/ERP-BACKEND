@@ -1,7 +1,7 @@
 """Durable posting queue. Missing cost/FX/tax setup is exposed, never guessed."""
 from decimal import Decimal
 from uuid import uuid5, NAMESPACE_URL
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from rest_framework.exceptions import ValidationError
 from .models import Book, Party, PostingEvent
 from .services import post, require, money, ZERO
@@ -19,8 +19,9 @@ def enqueue(source, payload, user):
             require(not event.payload.get('blocked'), event.payload.get('blocked',''))
             doc = post(event.payload,user,source=source)
             event.document = doc; event.error = ''; event.save(update_fields=['document','error'])
-    except ValidationError as error:
-        event.error = str(error.detail); event.save(update_fields=['error'])
+    except (ValidationError, IntegrityError) as error:
+        event.error = str(error.detail) if isinstance(error,ValidationError) else 'A document/source number already exists. Reconcile the duplicate before posting.'
+        event.save(update_fields=['error'])
 
 
 def shared_saved(key, content, previous, user):
@@ -35,15 +36,18 @@ def shared_saved(key, content, previous, user):
             party = None
             if customer:
                 party,_ = Party.objects.get_or_create(source='customer:'+str(customer), defaults={'name':r['buyer'],'kind':'customer'})
-            items=[]; total_net=Decimal(str(r['total']))-Decimal(str(r['tax'])); remaining=total_net
+            led=Decimal(str(r.get('led') or 0))
+            items=[]; total_net=Decimal(str(r['total']))-Decimal(str(r['tax']))-led; remaining=total_net
             subtotal=sum((Decimal(str(i['amount'])) for i in r['items']),ZERO)
             for index,i in enumerate(r['items']):
                 net = remaining if index==len(r['items'])-1 else money(total_net*Decimal(str(i['amount']))/subtotal) if subtotal else ZERO
                 remaining -= net
                 items.append({'item':i['itemId'],'description':i['description'],'quantity':str(i['quantity']),'unit':i['unit'],'price':str(i['rate']),'sourceNet':str(net),'tax':str(r['tax']) if index==0 else '0'})
+            if led:
+                items.append({'description':'LED levy','quantity':'1','price':'0','sourceNet':'0','tax':str(led),'taxAccount':Book.objects.first().led_account or '2200'})
             payload={'kind':'invoice','number':r['number'],'date':r['date'],'currency':r['currency'],'party':party.pk if party else None,'items':items}
             if not customer: payload['blocked']='Map this invoice to its canonical customer before posting.'
-            if r.get('led'): payload['blocked']='LED account mapping must be confirmed before posting this invoice.'
+            if led and not Book.objects.first().led_account: payload['blocked']='LED account mapping must be confirmed before posting this invoice.'
             enqueue('invoice:'+r['id'],payload,user)
     if key == 'inventory-ledger':
         prior={r['id']:r for r in (previous or {}).get('dispatches',[])}
