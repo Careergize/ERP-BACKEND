@@ -138,6 +138,9 @@ class PurchaseSerializer(serializers.ModelSerializer):
             PurchaseOrderLine.objects.create(order=order, stock_posted=order.receipt_method == 'immediate', **line)
         order.status = 'received' if order.receipt_method == 'immediate' else 'awaiting_receipt'
         order.save(update_fields=['status', 'updated_at'])
+        if order.receipt_method == 'immediate':
+            from accounting.integration import purchase_received
+            purchase_received(order, order.created_by)
         return order
 
 

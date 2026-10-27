@@ -97,6 +97,8 @@ class GRNSerializer(serializers.ModelSerializer):
         received = [line.quantity if line.stock_posted else sum((entry.quantity_received for entry in line.goods_received_lines.all()), Decimal(0)) for line in order_lines]
         order.status = 'received' if all(quantity >= line.quantity for line, quantity in zip(order_lines, received)) else 'partially_received' if any(received) else 'awaiting_receipt'
         order.save(update_fields=['status', 'updated_at'])
+        from accounting.integration import purchase_received
+        purchase_received(order, actor, note)
         return note
 
 

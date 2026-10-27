@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'erp',
     'quotations',
     'inventory',
+    'accounting.apps.AccountingConfig',
 ]
 
 MIDDLEWARE = [

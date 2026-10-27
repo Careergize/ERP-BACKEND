@@ -37,6 +37,7 @@ router.register('users', ManagedUserViewSet)
 from erp.job_drafts import JobDraftAPI, JobDraftDetail, JobDraftHistory
 
 urlpatterns = [
+    path('api/accounting/', include('accounting.urls')),
     path('api/recycling/materials/report/', RecycledMaterialReport.as_view()),
     path('api/recycling/purchases/report/', PurchaseReport.as_view()),
     path('api/costing/', CostingSummary.as_view()),

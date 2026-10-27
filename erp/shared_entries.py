@@ -183,6 +183,7 @@ class SharedEntryDetail(APIView):
                 except (KeyError, TypeError, ValueError, AttributeError, StopIteration, OverflowError):
                     raise serializers.ValidationError('Complete the required record fields with valid types and references.')
                 next_version = version + 1
+                previous_content = entry.content if entry else None
                 if entry:
                     # Compare-and-swap also protects engines without row locks.
                     from django.utils import timezone
@@ -191,6 +192,9 @@ class SharedEntryDetail(APIView):
                 else:
                     entry = SharedEntry.objects.create(key=stored_key, content=content, version=next_version, updated_by=request.user)
                 EntryRevision.objects.create(entry=entry, version=next_version, command_id=command, content=content, content_hash=digest, actor=request.user)
+                if key in {'invoices', 'inventory-ledger'}:
+                    from accounting.integration import shared_saved
+                    shared_saved(key, content, previous_content, request.user)
                 return Response({'key': key, 'version': next_version, 'commandId': str(command)})
         except IntegrityError:
             return Response({'detail': 'Concurrent update; retry the same command or reload.'}, status=409)
