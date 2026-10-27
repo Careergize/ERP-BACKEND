@@ -138,5 +138,6 @@ class PostingEvent(models.Model):
     payload = models.JSONField()
     document = models.OneToOneField(Document, null=True, on_delete=models.PROTECT)
     error = models.TextField(blank=True)
+    cancelled = models.BooleanField(default=False)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)

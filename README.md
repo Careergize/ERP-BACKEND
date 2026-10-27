@@ -1,5 +1,12 @@
 # Navapack ERP backend
 
+## Finance and accounting — 27 October 2026
+
+Added the `accounting` app and `/api/accounting/` APIs, integrated source posting
+events, normalized journals/allocations and valuation. Deploy its migrations alongside
+the frontend Finance workspace, then configure/reconcile opening balances. See
+[implemented scope, remaining workflows, tests and rollout](accounting/README.md).
+
 ## Recycling Module 2 — 26 October 2026
 
 Recycled Materials persists daily bag entries and a separate append-only material

@@ -12,7 +12,7 @@ def enqueue(source, payload, user):
         return
     payload = {**payload, 'commandId':str(uuid5(NAMESPACE_URL, 'navapack-accounting:'+source))}
     event, _ = PostingEvent.objects.get_or_create(source=source, defaults={'payload':payload,'actor':user})
-    if event.document_id:
+    if event.document_id or event.cancelled:
         return
     try:
         with transaction.atomic():
@@ -55,7 +55,21 @@ def shared_saved(key, content, previous, user):
             if r['status']=='Confirmed' and r['id'] not in prior:
                 enqueue('dispatch:'+r['id'],{'kind':'stock-issue','number':'VAL-'+r['number'],'date':r['date'],'item':'finished:'+r['productId'],'unit':r['unit'],'quantity':str(r['quantity']),'contra':'5100'},user)
             elif r['status']=='Cancelled' and prior.get(r['id'],{}).get('status')=='Confirmed':
-                enqueue('dispatch-return:'+r['id'],{'blocked':'A returned dispatch requires its original cost and approved return posting.','kind':'stock-receipt','number':'RETURN-'+r['number'],'date':r['date']},user)
+                original=PostingEvent.objects.select_for_update().filter(pk='dispatch:'+r['id']).first()
+                if original and original.document_id:
+                    reversal=next((m for m in content.get('movements',[]) if m.get('dispatchId')==r['id'] and m.get('reversalOf')),None)
+                    enqueue('dispatch-return:'+r['id'],{'kind':'reverse','document':original.document_id,'number':'RETURN-'+r['number'],
+                        'date':reversal['date'] if reversal else r['date'],'notes':reversal.get('remarks','Dispatch cancelled') if reversal else 'Dispatch cancelled'},user)
+                elif original:
+                    original.cancelled=True;original.error='Dispatch cancelled before financial posting; no cost journal was posted.'
+                    original.save(update_fields=['cancelled','error'])
+        old_movements={m['id'] for m in (previous or {}).get('movements',[])}
+        for m in content.get('movements',[]):
+            if m['id'] in old_movements or m.get('dispatchId') or m.get('reversalOf'):continue
+            incoming=m['type']=='IN'
+            enqueue('finished-movement:'+m['id'],{'kind':'stock-receipt' if incoming else 'stock-issue',
+                'number':'VAL-FG-'+m['id'],'date':m['date'],'item':'finished:'+m['productId'],
+                'unit':m['unit'],'quantity':str(m['quantity']),'contra':'1600' if m.get('jobCardId') else '2300' if incoming else '6100'},user)
 
 
 def purchase_received(order, user, note=None):

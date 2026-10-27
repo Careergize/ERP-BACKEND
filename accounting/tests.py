@@ -213,3 +213,22 @@ class AccountingTests(APITestCase):
         self.assertEqual(r.status_code,201,r.data)
         s=StockValue.objects.get(pk='finished:test');self.assertEqual(s.quantity,Decimal('10'));self.assertEqual(s.value,Decimal('100'))
         self.assertEqual(self.report()['profitLoss']['expenses'],'0.00')
+
+    def test_dispatch_integration_posts_and_cancels_original_cost_once(self):
+        self.command('stock-receipt',item='finished:test',unit='pcs',quantity='10',value='100',contra='3100')
+        d={'id':'dispatch-syn','number':'DSP-SYN','date':'2026-02-02','productId':'test','unit':'pcs','quantity':5,'status':'Confirmed'}
+        shared_saved('inventory-ledger',{'dispatches':[d],'movements':[]},None,self.admin)
+        self.assertIsNotNone(PostingEvent.objects.get(pk='dispatch:dispatch-syn').document_id)
+        cancelled={**d,'status':'Cancelled'}
+        state={'dispatches':[cancelled],'movements':[{'id':'reverse-dispatch-syn','dispatchId':d['id'],'reversalOf':'out-dispatch-syn','date':'2026-02-03','remarks':'Returned'}]}
+        shared_saved('inventory-ledger',state,{'dispatches':[d],'movements':[]},self.admin)
+        shared_saved('inventory-ledger',state,{'dispatches':[d],'movements':[]},self.admin)
+        self.assertEqual(StockValue.objects.get(pk='finished:test').quantity,Decimal('10'))
+        self.assertEqual(Document.objects.filter(source='dispatch-return:dispatch-syn').count(),1)
+
+    def test_cancel_before_costing_removes_pending_dispatch_without_posting(self):
+        d={'id':'dispatch-missing','number':'DSP-MISSING','date':'2026-02-02','productId':'unknown','unit':'pcs','quantity':5,'status':'Confirmed'}
+        shared_saved('inventory-ledger',{'dispatches':[d]},None,self.admin)
+        shared_saved('inventory-ledger',{'dispatches':[{**d,'status':'Cancelled'}]},{'dispatches':[d]},self.admin)
+        self.assertEqual(Document.objects.count(),0)
+        self.assertEqual(self.client.get('/api/accounting/posting-queue/').data,[])

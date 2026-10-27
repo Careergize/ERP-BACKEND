@@ -93,12 +93,12 @@ class ClosePeriod(APIView):
 class PostingQueue(APIView):
     def get(self,request):
         access(request.user)
-        return Response([{'source':e.source,'payload':e.payload,'error':e.error,'createdAt':e.created_at.isoformat()} for e in PostingEvent.objects.filter(document__isnull=True).order_by('created_at')])
+        return Response([{'source':e.source,'payload':e.payload,'error':e.error,'createdAt':e.created_at.isoformat()} for e in PostingEvent.objects.filter(document__isnull=True,cancelled=False).order_by('created_at')])
 
     @transaction.atomic
     def post(self,request):
         access(request.user,write=True)
-        e=PostingEvent.objects.select_for_update().filter(pk=request.data.get('source'),document__isnull=True).first()
+        e=PostingEvent.objects.select_for_update().filter(pk=request.data.get('source'),document__isnull=True,cancelled=False).first()
         require(e is not None, 'Select an unposted source event.')
         p=dict(e.payload)
         # Only genuinely absent inputs may be supplied; source quantities/prices
@@ -118,9 +118,11 @@ class PostingQueue(APIView):
             if p['kind']=='stock-receipt':
                 from .services import dec, money
                 p['value']=str(money(dec(p['value'])*dec(p['fx'],8,True))); p['currency']=Book.objects.first().currency; p['fx']='1'
+        if p['kind']=='invoice' and not p.get('party'):
+            p['party']=request.data.get('party')
         if p['kind']=='stock-receipt' and 'value' not in p:
             p['value']=request.data.get('value')
-        d=post(p,e.actor,source=e.source)
+        d=post(p,request.user,source=e.source)
         e.document=d; e.error=''; e.payload=p; e.save(update_fields=['document','error','payload'])
         return Response(document_data(d))
 
@@ -182,18 +184,20 @@ class PurchaseBills(APIView):
             expected={i.item.removeprefix('purchase-line:'):i.quantity for i in previous.items.all()}
             supplied={str(k):dec(v,6) for k,v in p.get('quantities',{}).items() if dec(v,6)>0}
             require(expected==supplied and previous.date==day(p.get('date')) and previous.party_id==p.get('party') and previous.fx==dec(p.get('fx','1'),8,True), 'This command was already accepted with different bill details.')
+            require(all(i.tax==dec(p.get('taxes',{}).get(i.item.removeprefix('purchase-line:'),'0')) for i in previous.items.all()),'This bill was already accepted with different tax amounts.')
             return Response(document_data(previous))
         requested=p.get('quantities',{})
         require(isinstance(requested,dict),'Supply quantities by purchase-line ID.')
+        require(isinstance(p.get('taxes',{}),dict),'Supply tax amounts by purchase-line ID.')
         items=[]
         for line in order.lines.all():
             qty=dec(requested.get(str(line.pk),'0'),6)
             if not qty:continue
             billed=sum((i.quantity for i in DocumentLine.objects.filter(item=f'purchase-line:{line.pk}',document__kind='bill',document__reversal__isnull=True)),ZERO)
             require(qty <= line.quantity-billed,'Billed quantity exceeds this purchase line’s remaining scope.')
-            items.append({'item':f'purchase-line:{line.pk}','description':line.description,'quantity':str(qty),'unit':line.unit,'price':str(line.unit_price),'tax':'0','account':'2300' if line.stock_item_id else '6100'})
+            items.append({'item':f'purchase-line:{line.pk}','description':line.description,'quantity':str(qty),'unit':line.unit,'price':str(line.unit_price),'tax':str(dec(p.get('taxes',{}).get(str(line.pk),'0'))),'account':'2300' if line.stock_item_id else '6100'})
         payload={k:p[k] for k in ['commandId','number','date','party','fx'] if k in p}
-        payload.update(kind='bill',currency=order.currency,items=items,notes=f'Supplier bill matched to {order.number}; tax excluded unless separately reviewed.')
+        payload.update(kind='bill',currency=order.currency,items=items,notes=f'Supplier bill matched to {order.number}; explicit tax amounts are recoverable input tax.')
         doc=post(payload,request.user,source=f'purchase-bill:{order.pk}:{p.get("number")}')
         return Response(document_data(doc),status=201)
 
@@ -211,7 +215,7 @@ class CaptureSources(APIView):
         invoices=SharedEntry.objects.filter(pk='invoices').first()
         shared_saved('invoices',[i for i in (invoices.content if invoices else []) if i['date']>=str(b.start_date)],None,request.user)
         ledger=SharedEntry.objects.filter(pk='inventory-ledger').first()
-        shared_saved('inventory-ledger',{'dispatches':[d for d in (ledger.content if ledger else {}).get('dispatches',[]) if d['date']>=str(b.start_date)]},None,request.user)
+        shared_saved('inventory-ledger',{'dispatches':[d for d in (ledger.content if ledger else {}).get('dispatches',[]) if d['date']>=str(b.start_date)],'movements':[m for m in (ledger.content if ledger else {}).get('movements',[]) if m['date']>=str(b.start_date)]},None,request.user)
         for order in PurchaseOrder.objects.filter(order_date__gte=b.start_date,receipt_method='immediate'):
             purchase_received(order,request.user)
         for note in GoodsReceivedNote.objects.filter(receipt_date__gte=b.start_date).select_related('purchase_order'):
