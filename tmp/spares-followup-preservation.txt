@@ -1,0 +1,8 @@
+Final shared SHA256: 30c860300d19b0a8c21f79e18ccaa5e2d2c7473b9a03824c8f9fefbe4f205f47
+Opening permissions: 0
+Same baseline error names: True
+Original source unchanged: backend/inventory/catalog_models.py True
+Original source unchanged: frontend/src/lib/registerApi.ts True
+Original source unchanged: frontend/src/pages/Consumables/CatalogueForms.tsx True
+Original source unchanged: frontend/src/pages/Consumables/ConnectedConsumables.tsx True
+Original source unchanged: frontend/src/pages/Consumables/ConsumablesPage.tsx True

@@ -1,0 +1,62 @@
+SAFETY: dotenv skipped; DB=:memory:; test DB=:memory:; outbound connect blocked.
+PASS: Create IMPORTED Spare HTTP 201
+PASS: IMPORTED edit HTTP 200
+PASS: IMPORTED opening request HTTP 201
+PASS: IMPORTED pending balance remains null
+Forbidden: /api/spares/opening-requests/68135afe-4c16-43e0-845a-9637ddd65ebc/review/
+PASS: IMPORTED self approval denied HTTP 403
+Forbidden: /api/spares/opening-requests/68135afe-4c16-43e0-845a-9637ddd65ebc/review/
+PASS: IMPORTED superuser self approval denied HTTP 403
+Forbidden: /api/spares/opening-requests/68135afe-4c16-43e0-845a-9637ddd65ebc/review/
+PASS: IMPORTED unauthorized approval denied HTTP 403
+PASS: IMPORTED independent approval HTTP 200
+PASS: IMPORTED approved balance=10
+PASS: IMPORTED stock IN HTTP 201
+PASS: IMPORTED stock IN retry HTTP 200
+PASS: IMPORTED IN balance=15
+PASS: IMPORTED stock OUT HTTP 201
+PASS: IMPORTED stock OUT retry HTTP 200
+PASS: IMPORTED OUT balance=12
+Bad Request: /api/spares/fc1b317c-c564-443d-8d9d-3dafae7dd15a/movements/
+PASS: IMPORTED insufficient stock HTTP 400
+Forbidden: /api/spares/fc1b317c-c564-443d-8d9d-3dafae7dd15a/movements/
+PASS: IMPORTED unauthorized posting HTTP 403
+Forbidden: /api/spares/fc1b317c-c564-443d-8d9d-3dafae7dd15a/movements/
+PASS: IMPORTED direct opening bypass denied HTTP 403
+PASS: IMPORTED movement history HTTP 200
+PASS: IMPORTED audit revisions=7 with server actors/times
+PASS: Create LOCAL Spare HTTP 201
+PASS: LOCAL edit HTTP 200
+PASS: LOCAL opening request HTTP 201
+PASS: LOCAL pending balance remains null
+Forbidden: /api/spares/opening-requests/25218fe2-3590-413d-b337-9a0caba71f7a/review/
+PASS: LOCAL self approval denied HTTP 403
+Forbidden: /api/spares/opening-requests/25218fe2-3590-413d-b337-9a0caba71f7a/review/
+PASS: LOCAL superuser self approval denied HTTP 403
+Forbidden: /api/spares/opening-requests/25218fe2-3590-413d-b337-9a0caba71f7a/review/
+PASS: LOCAL unauthorized approval denied HTTP 403
+PASS: LOCAL independent approval HTTP 200
+PASS: LOCAL approved balance=10
+PASS: LOCAL stock IN HTTP 201
+PASS: LOCAL stock IN retry HTTP 200
+PASS: LOCAL IN balance=15
+PASS: LOCAL stock OUT HTTP 201
+PASS: LOCAL stock OUT retry HTTP 200
+PASS: LOCAL OUT balance=12
+Bad Request: /api/spares/4b1ef7cc-6ab1-4273-ab64-c03fcf95b97e/movements/
+PASS: LOCAL insufficient stock HTTP 400
+Forbidden: /api/spares/4b1ef7cc-6ab1-4273-ab64-c03fcf95b97e/movements/
+PASS: LOCAL unauthorized posting HTTP 403
+Forbidden: /api/spares/4b1ef7cc-6ab1-4273-ab64-c03fcf95b97e/movements/
+PASS: LOCAL direct opening bypass denied HTTP 403
+PASS: LOCAL movement history HTTP 200
+PASS: LOCAL audit revisions=7 with server actors/times
+Unauthorized: /api/spares/
+PASS: unauthenticated list HTTP 401
+Forbidden: /api/spares/
+PASS: unauthorized creation HTTP 403
+Bad Request: /api/spares/
+PASS: master zero opening bypass denied HTTP 400
+PASS: Consumables/raw/finished/accounting row snapshots unchanged
+PASS: existing audit history API HTTP 200
+PASS: COMPLETE WORKFLOW both categories, real JWT, isolated in-memory database, blocked outbound sockets.

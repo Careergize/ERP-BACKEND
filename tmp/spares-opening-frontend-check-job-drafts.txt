@@ -1,0 +1,1 @@
+Job Draft adapter/controller: retry persistence, actor isolation, double-click, version conflict, permissions, malformed response and storage guards passed.

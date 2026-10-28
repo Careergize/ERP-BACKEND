@@ -1,0 +1,14 @@
+{
+  "backend/inventory/catalog_api.py": "dd3e6c8f6078139699d8d2c8cbf3e10b2fe15ad9ab88b5e77b0a3d73512b2c27",
+  "backend/inventory/catalogue_service.py": "7315ca24251465a57ecf70153616c80d7511d88c2a672faec6de79e8736bfcf4",
+  "backend/inventory/catalog_models.py": "afb809c66f7ecb9ce4f9e0c26b0bae6c0fb06b13ea131a1ca5907772b7cf2140",
+  "backend/inventory/models.py": "e7609c83fbcb60523809f3216dad965eed8262af6bafdf5f3897a6e5338220eb",
+  "backend/inventory/test_catalog.py": "998cc5d0529f1d849c48689e35e710135645739206ffa70e39c1b4463ee982cc",
+  "backend/inventory/test_catalogue_integration.py": "09dd34cc079bccaead5758b263de9f6c6599e29148986cdeaf695d0a38d13d47",
+  "frontend/src/pages/Registers/ItemRegisterPage.tsx": "c907edb4f9662980c29f827cc3c727d2f6db18dbc778f13f660a275ecbc05cdb",
+  "frontend/src/lib/registerApi.ts": "1024e5646c32630969a98113f0c9614d7a026094176c60ec2ce804c201249dbc",
+  "frontend/src/pages/Consumables/CatalogueForms.tsx": "4fb826f82eb237a41fae1f5d0c3a555a211f6455c0ff1fedcdfb6adfd03b3320",
+  "frontend/src/pages/Consumables/ConnectedConsumables.tsx": "640d1c57425b8d10403b9fac762fced248868be226fe206b6f121bf9f3795063",
+  "frontend/src/pages/Consumables/ConsumablesPage.tsx": "321bc430c8161d0775c799045502dae656f3f2766623b47c588c4e9f68024e57",
+  "backend/db.sqlite3": "e105dccdb8fe2c7b864454dbe5475c34bed445f16251e66adbc53b15a05259d5"
+}

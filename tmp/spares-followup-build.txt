@@ -1,0 +1,19 @@
+
+> navapack-frontend@0.1.0 build
+> node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 1744 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.62 kB │ gzip:   0.39 kB
+dist/assets/index-B3B9-nqL.css     47.35 kB │ gzip:  10.03 kB
+dist/assets/index-LpDtRtH0.js   1,225.98 kB │ gzip: 285.07 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.15s

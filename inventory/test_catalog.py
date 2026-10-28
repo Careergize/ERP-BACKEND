@@ -21,8 +21,9 @@ class CatalogTests(TestCase):
     def command(self, **changes):
         return {'request_id': str(uuid4()), 'movement_type': 'IN', 'quantity': '10.000001', 'unit': 'Each', 'reference': 'Synthetic evidence', **changes}
 
-    def opening(self):
-        return post_movement(self.item.pk, self.command(is_opening=True), self.actor)
+    def opening(self, item=None, quantity='10.000001'):
+        from .spare_opening_test_helpers import approved_opening
+        return approved_opening(item or self.item,self.actor,quantity)
 
     def test_both_spare_categories_and_consumable_persist(self):
         for category in ['IMPORTED', 'LOCAL']:
@@ -34,8 +35,8 @@ class CatalogTests(TestCase):
         self.assertEqual(self.client.patch(f'/api/consumables/{pk}/', {'description': 'Saved', 'is_active': False}).status_code, 200)
         self.assertEqual(Consumable.objects.get(pk=pk).description, 'Saved')
         self.assertEqual(self.client.get(f'/api/consumables/{pk}/').data['description'], 'Saved')
-        self.assertNotIn('stock', r.data)
-        self.assertEqual(self.client.post(f'/api/consumables/{pk}/movements/', {}).status_code, 404)
+        self.assertIsNone(r.data['stock']['current_stock'])
+        self.assertEqual(self.client.post(f'/api/consumables/{pk}/movements/', {}).status_code, 400)
         self.assertEqual(self.client.get('/api/consumables/?is_active=false').data['count'], 1)
 
     def test_uniqueness_validation_filters_and_updates(self):
@@ -59,10 +60,10 @@ class CatalogTests(TestCase):
             self.assertEqual(self.client.post(url, {}).status_code, 403)
         self.assertEqual(self.client.patch(f'/api/spares/{self.item.pk}/', {'name': 'No'}).status_code, 403)
 
-    def test_posting_blocked_even_for_superuser(self):
+    def test_superuser_posting_still_requires_explicit_opening(self):
         self.actor.is_superuser = True; self.actor.save()
-        self.assertFalse(self.client.get('/api/spares/capabilities/').data['can_post'])
-        self.assertEqual(self.client.post(f'/api/spares/{self.item.pk}/movements/', self.command()).status_code, 403)
+        self.assertTrue(self.client.get('/api/spares/capabilities/').data['can_post'])
+        self.assertEqual(self.client.post(f'/api/spares/{self.item.pk}/movements/', self.command()).status_code, 400)
         self.assertFalse(SpareStockMovement.objects.exists())
 
     def test_decimal_balances_idempotency_and_history(self):
@@ -99,9 +100,36 @@ class CatalogTests(TestCase):
         self.assertEqual(self.item.movements.count(), 1)
         second = SpareItem.objects.create(code='S-2', name='Local', category='LOCAL', unit='Each', created_by=self.actor)
         self.assertIsNone(balance(second)['current_stock'])
-        post_movement(second.pk, self.command(is_opening=True, quantity='0'), self.actor)
+        self.opening(item=second,quantity='0')
         self.assertEqual(balance(second)['current_stock'], 0)
         self.assertEqual(balance(self.item)['current_stock'], Decimal('10.000001'))
         with patch.object(SpareStockMovement.objects, 'create', side_effect=RuntimeError('Write failed')):
             with self.assertRaises(RuntimeError): post_movement(self.item.pk, self.command(), self.actor)
         self.assertEqual(self.item.movements.count(), 1)
+
+    def test_catalog_resolver_and_real_jwt_http_contracts(self):
+        from django.urls import resolve
+        from rest_framework_simplejwt.tokens import AccessToken
+        for kind, model in [('spares', SpareItem), ('consumables', Consumable)]:
+            with self.subTest(kind=kind):
+                self.assertEqual(resolve(f'/api/{kind}/').func.cls.queryset.model, model)
+                self.assertEqual(resolve(f'/api/{kind}/capabilities/').func.actions['get'], 'capabilities')
+                client = APIClient()
+                client.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.actor)}')
+                listing = client.get(f'/api/{kind}/', HTTP_ACCEPT='application/json')
+                self.assertEqual(listing.status_code, 200, listing.data)
+                self.assertTrue(listing['Content-Type'].startswith('application/json'))
+                self.assertTrue({'count', 'next', 'previous', 'results'} <= listing.data.keys())
+                caps = client.get(f'/api/{kind}/capabilities/', HTTP_ACCEPT='application/json')
+                self.assertEqual(caps.status_code, 200, caps.data)
+                self.assertTrue(caps.data['can_create']); self.assertTrue(caps.data['can_post'])
+                body = {'code': f'JWT-{kind}', 'name': 'JWT persisted synthetic record', 'unit': 'Each'}
+                if kind == 'spares': body['category'] = 'LOCAL'
+                saved = client.post(f'/api/{kind}/', body, format='json')
+                self.assertEqual(saved.status_code, 201, saved.data)
+                reloaded = client.get(f"/api/{kind}/{saved.data['id']}/", HTTP_ACCEPT='application/json')
+                self.assertEqual(reloaded.data['code'], body['code'])
+                self.assertEqual(client.patch(f"/api/{kind}/{saved.data['id']}/", {'description': 'JWT edit'}, format='json').status_code, 200)
+                other = APIClient()
+                other.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.actor)}')
+                self.assertEqual(other.get(f"/api/{kind}/{saved.data['id']}/").data['description'], 'JWT edit')

@@ -1,0 +1,106 @@
+[
+  {
+    "Script": "check-accounting.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-auth.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-baseline-contracts.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-catalogue-integration.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-consumables-demo.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-custom-costing.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-customers.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-finished-goods.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-integrated-operations.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-integration-connections.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-inventory-workflows.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-job-cards.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-job-drafts.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-led-finance.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-order-drafts.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-procurement.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-production-workflow-errors.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-quality.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-quotation-persistence.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-quotations.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-recycled-materials.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-registers.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-sales-fulfillment.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-shared-entries.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-spares-openings.mjs",
+    "Exit": 0
+  },
+  {
+    "Script": "check-tailwind-build.mjs",
+    "Exit": 0
+  }
+]

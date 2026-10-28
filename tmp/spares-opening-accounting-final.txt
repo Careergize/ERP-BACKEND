@@ -1,0 +1,117 @@
+SAFETY: dotenv skipped; DB=:memory:; test DB=:memory:; outbound connect blocked.
+Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+
+Found 19 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: corsheaders, messages, rest_framework, staticfiles
+  Apply all migrations: accounting, accounts, admin, auth, contenttypes, erp, inventory, quotations, sessions, token_blacklist
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0001_initial... OK
+  Applying auth.0002_alter_permission_name_max_length... OK
+  Applying auth.0003_alter_user_email_max_length... OK
+  Applying auth.0004_alter_user_username_opts... OK
+  Applying auth.0005_alter_user_last_login_null... OK
+  Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
+  Applying auth.0009_alter_user_last_name_max_length... OK
+  Applying auth.0010_alter_group_name_max_length... OK
+  Applying auth.0011_update_proxy_permissions... OK
+  Applying auth.0012_alter_user_first_name_max_length... OK
+  Applying accounts.0001_initial... OK
+  Applying accounting.0001_initial... OK
+  Applying accounting.0002_documentline_category... OK
+  Applying accounting.0003_allocation_date_allocation_recorded_document_and_more... OK
+  Applying accounting.0004_postingevent_cancelled... OK
+  Applying quotations.0001_initial... OK
+  Applying erp.0001_initial... OK
+  Applying erp.0002_customer_contact_person_customer_creation_key_and_more... OK
+  Applying quotations.0002_quotation_customer_master... OK
+  Applying quotations.0003_quotation_submitted_at... OK
+  Applying quotations.0004_quotation_rejected_at_quotation_rejected_by_and_more... OK
+  Applying accounts.0002_alter_user_role_role_user_assigned_role... OK
+  Applying accounts.0003_seed_role_master... OK
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
+  Applying admin.0003_logentry_add_action_flag_choices... OK
+  Applying erp.0003_unit... OK
+  Applying erp.0004_seed_units... OK
+  Applying erp.0005_purchaseorder_purchaseorderline... OK
+  Applying erp.0006_purchase_permissions... OK
+  Applying erp.0007_finishedstockitem_purchaseorderline_stock_details_and_more... OK
+  Applying erp.0008_finished_stock_reference... OK
+  Applying erp.0009_purchaseorder_receipt_method_goodsreceivednote_and_more... OK
+  Applying erp.0010_grn_permissions... OK
+  Applying erp.0011_productionprocess_productionmodelrevision_and_more... OK
+  Applying erp.0012_workflow_permissions... OK
+  Applying erp.0013_productionmachine... OK
+  Applying erp.0014_workflowjob_request_id_alter_workflowjob_order... OK
+  Applying erp.0015_alter_workfloworder_options... OK
+  Applying quotations.0005_quotationdraft... OK
+  Applying quotations.0006_inactive_control_foundation... OK
+  Applying erp.0013_inactive_control_foundation... OK
+  Applying erp.0014_merge_task03a_productionmachine... OK
+  Applying erp.0016_merge_existing_workflow_heads... OK
+  Applying erp.0017_shared_entry_history... OK
+  Applying erp.0018_shared_entry_permissions... OK
+  Applying erp.0019_production_tracking_permission... OK
+  Applying erp.0020_recycling_entry_permission... OK
+  Applying inventory.0001_initial... OK
+  Applying inventory.0002_reference_inventory... OK
+  Applying inventory.0003_inventory_permissions... OK
+  Applying inventory.0004_procurementdelivery_procurementplanrevision_and_more... OK
+  Applying inventory.0005_normalize_saved_deliveries... OK
+  Applying inventory.0006_remove_procurementplan_deliveries... OK
+  Applying inventory.0007_delivery_history_view_permissions... OK
+  Applying inventory.0008_procurementplan_as_of_date_and_more... OK
+  Applying inventory.0009_procurementplan_procurement_stock_nonnegative... OK
+  Applying inventory.0010_spares_consumables... OK
+  Applying inventory.0011_catalogue_integration... OK
+  Applying inventory.0012_spare_opening_approval... OK
+  Applying quotations.0006_order_quotation_permissions... OK
+  Applying quotations.0007_merge_existing_control_heads... OK
+  Applying sessions.0001_initial... OK
+  Applying token_blacklist.0001_initial... OK
+  Applying token_blacklist.0002_outstandingtoken_jti_hex... OK
+  Applying token_blacklist.0003_auto_20171017_2007... OK
+  Applying token_blacklist.0004_auto_20171017_2013... OK
+  Applying token_blacklist.0005_remove_outstandingtoken_jti... OK
+  Applying token_blacklist.0006_auto_20171017_2113... OK
+  Applying token_blacklist.0007_auto_20171017_2214... OK
+  Applying token_blacklist.0008_migrate_to_bigautofield... OK
+  Applying token_blacklist.0010_fix_migrate_to_bigautofield... OK
+  Applying token_blacklist.0011_linearizes_history... OK
+  Applying token_blacklist.0012_alter_outstandingtoken_user... OK
+test_advance_can_be_allocated_later_and_reversed_with_fx (accounting.tests.AccountingTests.test_advance_can_be_allocated_later_and_reversed_with_fx) ... ok
+test_allocation_bounds_and_wrong_party_roll_back (accounting.tests.AccountingTests.test_allocation_bounds_and_wrong_party_roll_back) ... ok
+test_cancel_before_costing_removes_pending_dispatch_without_posting (accounting.tests.AccountingTests.test_cancel_before_costing_removes_pending_dispatch_without_posting) ... ok
+test_cogs_reversal_returns_original_cost (accounting.tests.AccountingTests.test_cogs_reversal_returns_original_cost) ... ok
+test_dispatch_integration_posts_and_cancels_original_cost_once (accounting.tests.AccountingTests.test_dispatch_integration_posts_and_cancels_original_cost_once) ... ok
+test_fx_gain_and_missing_fx (accounting.tests.AccountingTests.test_fx_gain_and_missing_fx) ... ok
+test_historical_outstanding_and_valuation_are_as_of_end (accounting.tests.AccountingTests.test_historical_outstanding_and_valuation_are_as_of_end) ... ok
+test_journal_evidence_cannot_be_edited_and_led_requires_mapping (accounting.tests.AccountingTests.test_journal_evidence_cannot_be_edited_and_led_requires_mapping) ... ok
+test_opening_and_period_lock (accounting.tests.AccountingTests.test_opening_and_period_lock) ... ok
+test_payment_reversal_restores_outstanding_and_historical_balances (accounting.tests.AccountingTests.test_payment_reversal_restores_outstanding_and_historical_balances) ... ok
+test_permissions_inactive_roles_and_setup_immutability (accounting.tests.AccountingTests.test_permissions_inactive_roles_and_setup_immutability) ... ok
+test_queue_retains_missing_value_then_posts_exactly_once (accounting.tests.AccountingTests.test_queue_retains_missing_value_then_posts_exactly_once) ... ok
+test_raw_movement_signal_captures_missing_cost (accounting.tests.AccountingTests.test_raw_movement_signal_captures_missing_cost) ... ok
+test_retry_idempotency_and_changed_request_rejected (accounting.tests.AccountingTests.test_retry_idempotency_and_changed_request_rejected) ... ok
+test_sales_receipt_partial_balance_ledgers_and_statements (accounting.tests.AccountingTests.test_sales_receipt_partial_balance_ledgers_and_statements) ... ok
+test_saved_invoice_auto_posting_and_foreign_queue (accounting.tests.AccountingTests.test_saved_invoice_auto_posting_and_foreign_queue) ... ok
+test_supplier_bill_matches_po_partial_and_rejects_overbilling (accounting.tests.AccountingTests.test_supplier_bill_matches_po_partial_and_rejects_overbilling) ... ok
+test_supplier_bill_payment_expense_cash_transfer (accounting.tests.AccountingTests.test_supplier_bill_payment_expense_cash_transfer) ... ok
+test_valuation_weighted_average_and_insufficient_stock (accounting.tests.AccountingTests.test_valuation_weighted_average_and_insufficient_stock) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.327s
+
+OK
+Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+
+  Applying token_blacklist.0013_alter_blacklistedtoken_options_and_more... OK
+System check identified no issues (0 silenced).

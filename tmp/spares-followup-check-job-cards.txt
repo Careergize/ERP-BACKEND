@@ -1,0 +1,1 @@
+Passed: sample counts/search/filters, approval and roles, full/partial material issue, stage ordering/validation/locks, same/different-unit handovers, final output and waste, stock confirmation, delay, legacy data and unchanged inventories.

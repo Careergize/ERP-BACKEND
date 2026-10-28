@@ -1,0 +1,1 @@
+PASS: all nine accounting sections render with configured API-shaped fixtures. Browser interaction, API transport and financial calculations are separate checks.

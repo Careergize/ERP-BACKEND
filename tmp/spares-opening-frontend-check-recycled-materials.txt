@@ -1,0 +1,7 @@
+Warning: useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.
+    at MemoryRouter (file:///F:/WORK/ERP/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.
+    at RecyclingPage (F:/WORK/ERP/frontend/src/pages/Recycling/RecyclingPage.tsx:17:71)
+    at Router (file:///F:/WORK/ERP/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///F:/WORK/ERP/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+PASS: Module 2 selection, reference materials, bag conversion, loading state and disabled entry controls before backend access loads. Browser interaction not covered.

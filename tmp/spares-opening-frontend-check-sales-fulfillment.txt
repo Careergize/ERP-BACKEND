@@ -1,0 +1,2 @@
+Passed: one parent per order, distinct item quantities/units/models, mixed-stock exclusion, creation idempotency, historical preservation, complete approval scope, late-item lock, item lookup, parent timeline and completion aggregation.
+Passed: source validation, stock-only order, reservation idempotency/limits, unchanged physical allocation, partial dispatch, duplicate OUT protection, unit/batch bounds, reversals, unknown stock, monthly carry-forward, configurable invoice tax/discount/words, approval/receipt bounds and source references.

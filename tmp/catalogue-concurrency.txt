@@ -1,0 +1,2 @@
+Bad Request: /api/consumables/8ce34c98-88f6-4f86-ad9a-2a4560673917/movements/
+PASS: temporary file-backed SQLite; 8 concurrent unique codes, duplicate master/movement replays, concurrent overspending rejection, unique transaction references and database reload. Network blocked; shared DB untouched.

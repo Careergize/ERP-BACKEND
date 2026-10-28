@@ -1,0 +1,1 @@
+Passed: saved profile restoration, tab/persistent storage, token rotation, shared concurrent refresh, invalid-session cleanup, outage preservation and logout cleanup.

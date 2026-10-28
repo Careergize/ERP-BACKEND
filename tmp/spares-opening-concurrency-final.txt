@@ -1,0 +1,6 @@
+Conflict: /api/spares/d8c4e9e5-adca-43e7-bc1b-7d764d2b3e52/opening-requests/
+Forbidden: /api/spares/opening-requests/d64a2816-2da3-4855-a6f4-89da1e6bccbb/review/
+Conflict: /api/spares/opening-requests/d64a2816-2da3-4855-a6f4-89da1e6bccbb/review/
+Bad Request: /api/spares/d8c4e9e5-adca-43e7-bc1b-7d764d2b3e52/movements/
+Conflict: /api/spares/opening-requests/955297be-05a7-450f-a6bf-f7dff49e1aa5/review/
+PASS: temporary file-backed SQLite + real JWT: duplicate proposals, competing reviewers, replayed decisions, superuser self-review denial, approve/reject race, concurrent ordinary overspend/replay, unique references, persistence and Consumables separation. No shared DB or network used.

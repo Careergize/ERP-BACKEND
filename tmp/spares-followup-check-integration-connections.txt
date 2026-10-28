@@ -1,0 +1,1 @@
+PASS: independent master responses, JWT/method/path, invalid responses, permission failures and development-only configuration. Mock transport; no persistence claim.

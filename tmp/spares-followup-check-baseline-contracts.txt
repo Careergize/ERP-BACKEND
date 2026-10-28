@@ -1,0 +1,1 @@
+PASS: baseline adapter paths, envelopes, stable request payload and current error handling (5 groups).

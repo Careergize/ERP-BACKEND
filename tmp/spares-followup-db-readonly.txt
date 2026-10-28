@@ -1,0 +1,38 @@
+Current hash 30c860300d19b0a8c21f79e18ccaa5e2d2c7473b9a03824c8f9fefbe4f205f47 Initial hash e105dccdb8fe2c7b864454dbe5475c34bed445f16251e66adbc53b15a05259d5 Header change counter 132
+Integrity [('ok',)]
+Journal ('delete',)
+User/schema versions (0,) (428,)
+{"table": "accounts_user", "count": 1, "latest": {"last_login": null}}
+{"table": "django_migrations", "count": 73, "latest": {"applied": "2026-10-26 05:47:07.815122"}}
+{"table": "erp_approvaldecision", "count": 0, "latest": {"decided_at": null}}
+{"table": "erp_commandreceipt", "count": 0, "latest": {"created_at": null}}
+{"table": "erp_customer", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_entryrevision", "count": 0, "latest": {"recorded_at": null}}
+{"table": "erp_goodsreceivedline", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_goodsreceivednote", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_jobcard", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_product", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_productionmachine", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_productionmodelrevision", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_productionprocess", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_purchaseorder", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_purchaseorderline", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_salesorder", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_salesorderline", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_sharedentry", "count": 0, "latest": {"updated_at": null}}
+{"table": "erp_supplier", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_unit", "count": 7, "latest": {"created_at": "2026-10-22 13:02:23.701291", "updated_at": "2026-10-22 13:02:23.701291"}}
+{"table": "erp_workflowjob", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "erp_workfloworder", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "inventory_consumable", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "inventory_procurementdelivery", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "inventory_procurementplan", "count": 0, "latest": {"updated_at": null}}
+{"table": "inventory_rawmovement", "count": 334, "latest": {"created_at": "2026-10-22 13:02:26.756419"}}
+{"table": "inventory_spareitem", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "inventory_sparestockmovement", "count": 0, "latest": {"created_at": null}}
+{"table": "quotations_delivery", "count": 0, "latest": {"created_at": null}}
+{"table": "quotations_quotation", "count": 0, "latest": {"created_at": null}}
+{"table": "quotations_quotationdraft", "count": 0, "latest": {"created_at": null, "updated_at": null}}
+{"table": "token_blacklist_outstandingtoken", "count": 13, "latest": {"created_at": "2026-10-28 08:32:44.083888"}}
+Recent token timestamps only: [('2026-10-28 08:32:44.083888', '2026-10-29 08:32:44'), ('2026-10-28 06:36:21.841536', '2026-10-29 06:36:21'), ('2026-10-28 06:20:30.201885', '2026-10-29 06:20:30'), ('2026-10-28 05:53:10.314396', '2026-10-29 05:53:10'), ('2026-10-28 05:35:53.450278', '2026-10-29 05:35:53')]
+Inventory migrations: [('0001_initial', '2026-10-22 13:02:26.171480'), ('0002_reference_inventory', '2026-10-22 13:02:26.756419'), ('0003_inventory_permissions', '2026-10-22 13:02:26.839201'), ('0004_procurementdelivery_procurementplanrevision_and_more', '2026-10-22 13:02:27.395575'), ('0005_normalize_saved_deliveries', '2026-10-22 13:02:27.584687'), ('0006_remove_procurementplan_deliveries', '2026-10-22 13:02:27.640603'), ('0007_delivery_history_view_permissions', '2026-10-22 13:02:27.713476'), ('0008_procurementplan_as_of_date_and_more', '2026-10-22 13:02:27.807738'), ('0009_procurementplan_procurement_stock_nonnegative', '2026-10-22 13:02:27.866808'), ('0010_spares_consumables', '2026-10-26 05:47:07.652063')]

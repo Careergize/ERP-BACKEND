@@ -1,0 +1,1 @@
+Passed: client-confirmed LED MAX percentage/weight/equal, missing KG/FX/base/date guards, product/model CTR conversion, stock reverse-price parity, costing→quotation→order snapshots and VAT once, partial-invoice LED/VAT reconciliation, customer-safe projection, historic FX immutability and separate finance demo credentials/mode gating.

@@ -1,0 +1,1 @@
+Passed integrated operations: versioned KG/CTR and price conversion; VAT/LED/FX/markup/margin; stock alerts and dispatch-only depletion/reversal/idempotency; sales unit/currency/parent counts; sequential multiple stage runs and mass-balance limits; daily/weekly/monthly QC schedules and independent review/holds; safe quotation email drafts and internal rejection/change comparison.

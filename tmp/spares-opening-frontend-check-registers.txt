@@ -1,0 +1,1 @@
+PASS: adapter persistence simulation, confirmed saves, decimal strings, edits, filters, errors, initial UI and routes. Browser interaction not covered.

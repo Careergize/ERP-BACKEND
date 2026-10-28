@@ -1,0 +1,3 @@
+PASS: built HTML links CSS; core/responsive/theme utilities and body @apply resolved.
+PASS: focus, app animations, reduced motion and estimate/QC/quotation print rules retained.
+CSS processing checks only; no browser visual regression claim.

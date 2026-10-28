@@ -1,0 +1,1 @@
+PASS: controlled Draft API/editor create, refresh/read, multi-product/source preservation, edit/version, history, validation, 401/403, network retry across refresh, duplicate click, stale conflict, legacy read-only and test-only gate. No stock/Job Card requests.

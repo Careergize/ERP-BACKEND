@@ -1,0 +1,1 @@
+PASS: Spares capability/initialized-stock gating, partial API failures versus empty data, schema/auth/permission/conflict errors, request/review transport IDs and snapshot hashes, no direct-opening control, approval UI and unaffected Consumables register SSR. Browser interaction is not covered.
