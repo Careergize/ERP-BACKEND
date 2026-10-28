@@ -1,0 +1,5 @@
+Shared DB SHA256 before: 80d40edad27262fa6fe4af414b20c3e0e7cb569a2ec2b636751f9343617d678e
+Shared DB SHA256 after: aca661cefa79246938a2cc340173f22a32ecf6e8b9a34af7d9907d9f3ac95890
+Identical: False
+Operational ERP migration: ('0020_recycling_entry_permission',)
+Sales schema applied: 0

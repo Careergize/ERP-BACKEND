@@ -471,3 +471,5 @@ class CommandReceipt(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError('Command receipts cannot be deleted.')
+
+from .sales_models import SalesReturn, SalesCreditNote, SalesReturnInspection  # noqa: F401
