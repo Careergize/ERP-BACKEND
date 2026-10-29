@@ -68,3 +68,33 @@ class InhouseWasteTests(APITestCase):
             self.assertEqual(self.put([self.rates],key='inhouse-waste-rates').status_code,403)
         self.client.force_authenticate(None)
         self.assertEqual(self.report().status_code,401)
+
+    def test_custom_item_quantity_rate_and_export(self):
+        item = dict(id='custom-1', name='HDPE Blue')
+        key = 'inhouse-waste-items'
+        self.assertEqual(self.put([item], key=key).status_code, 200)
+        self.assertEqual(self.put([item, dict(id='custom-2', name='hdpe blue')], 1, key).status_code, 400)
+        self.assertEqual(self.put([], 1, key).status_code, 400)
+        self.assertEqual(self.put([{**item, 'name':'Renamed'}], 1, key).status_code, 400)
+        self.assertEqual(self.put([{**self.row, 'extraQuantities':{'unknown':'1'}}]).status_code, 400)
+        self.assertEqual(self.put([{**self.row, 'extraQuantities':{'custom-1':'-1'}}]).status_code, 400)
+        row = {**self.row, 'hdpeBlack':'2', 'extraQuantities':{'custom-1':'3.125'}}
+        self.assertEqual(self.put([row]).status_code, 200)
+        self.assertEqual(self.put([self.rates], key='inhouse-waste-rates').status_code, 200)
+        d = self.report().data
+        self.assertEqual(d['totals']['total'], '5.125')
+        self.assertIsNone(d['amount'])
+        self.assertIsNone(d['valuation'][-1]['rate'])
+        updated = {**self.rates, 'customRates':{'custom-1':'100.1'}, 'correctionReason':'Set new item rate'}
+        self.assertEqual(self.put([updated], 1, 'inhouse-waste-rates').status_code, 200)
+        d = self.report().data
+        self.assertEqual(d['valuation'][-1]['amount'], '312.81')
+        self.assertEqual(d['amount'], '4312.81')
+        with ZipFile(BytesIO(self.report(export='xlsx').content)) as z:
+            self.assertIn('HDPE Blue kg', z.read('xl/worksheets/sheet1.xml').decode())
+            self.assertIn('HDPE Blue', z.read('xl/worksheets/sheet2.xml').decode())
+        # A later catalog addition must not rewrite historical entries or invent amounts.
+        self.assertEqual(self.put([item, dict(id='custom-2', name='PET Green')], 1, key).status_code, 200)
+        self.assertEqual(self.report().data['amount'], '4312.81')
+        self.assertEqual(self.put([{**row,'status':'Voided','correctionReason':'Duplicate'}],1).status_code,200)
+        self.assertEqual(self.report().data['totals']['total'],'0')
