@@ -13,6 +13,7 @@ from erp.grn import GoodsReceivedNoteViewSet
 from erp import production_workflow as workflow
 from erp.order_drafts import DraftAPI, DraftDetail, DraftHistory
 from erp.shared_entries import SharedEntries, SharedEntryDetail, SharedEntryCommands, ManagementActivity, CostingSummary, RecyclingRecords
+from erp.labour_jobs import LabourJobReport
 from erp.recycling_purchases import PurchaseReport
 from erp.recycled_materials import RecycledMaterialReport
 
@@ -39,6 +40,7 @@ from erp.job_drafts import JobDraftAPI, JobDraftDetail, JobDraftHistory
 urlpatterns = [
     path('api/sales/', include('erp.sales_urls')),
     path('api/accounting/', include('accounting.urls')),
+    path('api/recycling/labour-jobs/report/', LabourJobReport.as_view()),
     path('api/recycling/materials/report/', RecycledMaterialReport.as_view()),
     path('api/recycling/purchases/report/', PurchaseReport.as_view()),
     path('api/costing/', CostingSummary.as_view()),

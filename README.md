@@ -272,3 +272,14 @@ reference metadata and deduplicates retries by quotation identity. Later workflo
 limitations below do not apply to the implemented shared order/Job Card handoff.
 
 This is a backend foundation, not the complete ERP. Stock ledgers/posting, revisions and amendments, routing, material issue, approvals, QC, recycling, costing, quotations, invoicing, dashboard/trace reports and audit/idempotency/concurrency services remain to be implemented against the frontend business documentation. Draft orders/job cards deliberately expose no update, delete or approval endpoints. Product identities/units and master edits need further immutability rules before inventory integration. Admin is for trusted operators and bypasses API service validation; production workflows must use dedicated services.
+
+
+## Recycling Module 3 — 29 October 2026
+
+Labour Job now persists customer material IN/OUT with validated kg quantities,
+correction/void history, monthly recorded balances and Excel export at
+`/api/recycling/labour-jobs/report/`. Uses existing SharedEntry storage and
+permissions; no migration required. Five new tests and thirteen recycling
+regressions pass on disposable SQLite; checks/drift pass. PostgreSQL concurrency
+and deployment remain unverified. See
+[scope](../ERP-Navapack-frontend/frontend/docs/labour-jobs.md).
