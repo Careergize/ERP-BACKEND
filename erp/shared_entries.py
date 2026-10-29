@@ -22,6 +22,7 @@ ALL = MANAGEMENT | QC | {'receptionist', 'store_keeper', 'production_operator', 
 # (read roles, write roles, root content type)
 SCOPES = {
     'labour-job-entries': ({'admin', 'accounts', 'store_keeper', 'recycling_operator', 'production_manager', 'project_manager'}, {'admin', 'accounts', 'store_keeper', 'recycling_operator'}, list),
+    'labour-job-options': ({'admin', 'accounts', 'store_keeper', 'recycling_operator', 'production_manager', 'project_manager'}, {'admin', 'accounts', 'store_keeper', 'recycling_operator'}, list),
     'recycled-material-entries': ({'admin', 'accounts', 'store_keeper', 'recycling_operator', 'production_manager', 'project_manager'}, {'admin', 'accounts', 'store_keeper', 'recycling_operator'}, list),
     'recycled-material-catalog': ({'admin', 'accounts', 'store_keeper', 'recycling_operator', 'production_manager', 'project_manager'}, {'admin', 'accounts', 'store_keeper', 'recycling_operator'}, list),
     'recycling-materials': ({'admin', 'accounts', 'store_keeper', 'recycling_operator', 'production_manager', 'project_manager'}, {'admin', 'accounts', 'store_keeper', 'recycling_operator'}, list),
@@ -75,6 +76,9 @@ def validate_content(key, content, previous, user):
         raise serializers.ValidationError('Invalid record structure.')
     if isinstance(content, list) and (len(content) > 10000 or any(not isinstance(row, dict) for row in content)):
         raise serializers.ValidationError('Records must be a list of objects (maximum 10,000).')
+    if key == 'labour-job-options':
+        from .labour_jobs import validate_options
+        validate_options(content, previous)
     if key == 'labour-job-entries':
         from .labour_jobs import validate_entries
         validate_entries(content, previous)

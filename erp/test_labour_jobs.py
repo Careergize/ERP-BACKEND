@@ -68,3 +68,18 @@ class LabourJobTests(APITestCase):
         self.assertEqual(self.report().status_code,403)
         self.client.force_authenticate(None)
         self.assertEqual(self.report().status_code,401)
+
+    def test_saved_material_and_colour_options(self):
+        url = '/api/shared-entries/labour-job-options/'
+        rows = [dict(id='m1', kind='material', name='PVC'), dict(id='c1', kind='color', name='Blue')]
+        def put(content, version=0):
+            return self.client.put(url, dict(content=content, expectedVersion=version, commandId=str(uuid4())), format='json')
+        self.assertEqual(put(rows).status_code, 200)
+        data = self.client.get('/api/shared-entries/').data
+        self.assertEqual(next(r['content'] for r in data['entries'] if r['key'] == 'labour-job-options'), rows)
+        for invalid in [rows + [dict(id='m2', kind='material', name='pvc')], rows[:1], [{**rows[0], 'name':'Changed'}, rows[1]], rows + [dict(id='x', kind='other', name='X')]]:
+            self.assertEqual(put(invalid, 1).status_code, 400)
+        reader = get_user_model().objects.create_user('option-reader', role='project_manager', assigned_role=Role.objects.get(code='project_manager'))
+        self.client.force_authenticate(reader)
+        self.assertIn('labour-job-options', self.client.get('/api/shared-entries/').data['readable'])
+        self.assertEqual(put(rows, 1).status_code, 403)
