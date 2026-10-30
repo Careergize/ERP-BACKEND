@@ -358,6 +358,20 @@ class AccountingTests(APITestCase):
         self.assertIn(response.status_code,[200,201],response.data)
         return response.data['id']
 
+    def test_unapplied_accounting_schema_returns_actionable_503(self):
+        from django.db.migrations.recorder import MigrationRecorder
+        from .api import required_accounting_migrations
+        MigrationRecorder.Migration.objects.filter(app='accounting',name__in=required_accounting_migrations()).delete()
+        for url in ['/api/accounting/setup/', '/api/accounting/reports/?start=2026-02-01&end=2026-02-28', '/api/accounting/posting-queue/']:
+            response=self.client.get(url)
+            self.assertEqual(response.status_code,503,response.data)
+            self.assertIn('python manage.py migrate accounting',str(response.data['detail']))
+        response=self.command('receipt',party=self.customer,amount='10',cashAccount='1100')
+        self.assertEqual(response.status_code,503,response.data)
+        self.assertEqual(Document.objects.count(),0)
+        self.admin.is_active=False;self.admin.save()
+        self.assertEqual(self.client.get('/api/accounting/setup/').status_code,403)
+
     def test_finance_masters_nested_groups_ledgers_and_group_reports(self):
         from .models import AccountGroup
         root=self.create_finance_master('groups',name='Operating costs',kind='expense')

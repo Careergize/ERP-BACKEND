@@ -147,7 +147,7 @@ test_save_reload_other_account_and_management_history (erp.test_shared_entries.S
 test_stale_write_cannot_replace_another_users_change (erp.test_shared_entries.SharedEntryTests.test_stale_write_cannot_replace_another_users_change) ... ok
 
 ----------------------------------------------------------------------
-Ran 55 tests in 2.748s
+Ran 55 tests in 2.188s
 
 OK
 Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...

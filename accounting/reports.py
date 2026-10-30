@@ -80,6 +80,7 @@ def report(start, end, party=None, account_code=None):
             else:
                 ledger.append({'date': str(l.document.date), 'document': l.document_id, 'number': l.document.number,
                     'voucherType':l.document.voucher_type.name if l.document.voucher_type else l.document.kind,
+                    'costCategory':l.document.cost_category.name if l.document.cost_category else 'Uncategorised',
                     'kind': l.document.kind, 'party': l.party.name if l.party else '', 'debit': str(l.debit), 'credit': str(l.credit),
                     'balance': str(running), 'currency': l.document.currency, 'foreignAmount': str(l.foreign_amount)})
     trial = []; income = ZERO; expenses = ZERO
@@ -140,15 +141,23 @@ def report(start, end, party=None, account_code=None):
     from .commitments import order_commitments
     groups = {g.pk:g for g in AccountGroup.objects.all()}
     group_totals = defaultdict(lambda: [ZERO,ZERO,ZERO,0])
+    ungrouped_totals = defaultdict(lambda: [ZERO,ZERO,ZERO,0])
     for row in trial:
         group_id = row['groupId']; visited = set()
+        if group_id is None:
+            values = ungrouped_totals[row['kind']]
+            values[0] += Decimal(row['opening']); values[1] += Decimal(row['debit']); values[2] += Decimal(row['credit']); values[3] += 1
         while group_id in groups and group_id not in visited:
             visited.add(group_id); values = group_totals[group_id]
             values[0] += Decimal(row['opening']); values[1] += Decimal(row['debit']); values[2] += Decimal(row['credit']); values[3] += 1
             group_id = groups[group_id].parent_id
     party_group_totals = defaultdict(lambda: [ZERO,ZERO,ZERO,0])
+    ungrouped_parties = defaultdict(lambda: [ZERO,ZERO,ZERO,0])
     for row in party_totals:
         group_id = row['groupId']; visited = set()
+        if group_id is None:
+            values = ungrouped_parties['asset' if row['kind']=='customer' else 'liability']
+            values[0] += Decimal(row['opening']); values[1] += Decimal(row['debit']); values[2] += Decimal(row['credit']); values[3] += 1
         while group_id in groups and group_id not in visited:
             visited.add(group_id); values = party_group_totals[group_id]
             values[0] += Decimal(row['opening']); values[1] += Decimal(row['debit']); values[2] += Decimal(row['credit']); values[3] += 1
@@ -157,11 +166,13 @@ def report(start, end, party=None, account_code=None):
         'partyGroupSummary':[{'id':g.pk,'name':g.name,'kind':g.kind,'parent':groups[g.parent_id].name if g.parent_id else '',
                          'opening':str(party_group_totals[g.pk][0]),'debit':str(party_group_totals[g.pk][1]),'credit':str(party_group_totals[g.pk][2]),
                          'balance':str(party_group_totals[g.pk][0]+party_group_totals[g.pk][1]-party_group_totals[g.pk][2]),'partyCount':party_group_totals[g.pk][3]}
-                        for g in sorted(groups.values(),key=lambda g:g.name) if g.kind in {'asset','liability'}],
+                        for g in sorted(groups.values(),key=lambda g:g.name) if g.kind in {'asset','liability'}]+
+                        [{'id':None,'name':'Ungrouped','kind':kind,'parent':'','opening':str(v[0]),'debit':str(v[1]),'credit':str(v[2]),'balance':str(v[0]+v[1]-v[2]),'partyCount':v[3]} for kind,v in ungrouped_parties.items()],
         'groupSummary':[{'id':g.pk,'name':g.name,'kind':g.kind,'parent':groups[g.parent_id].name if g.parent_id else '',
                          'opening':str(group_totals[g.pk][0]),'debit':str(group_totals[g.pk][1]),'credit':str(group_totals[g.pk][2]),
                          'balance':str(group_totals[g.pk][0]+group_totals[g.pk][1]-group_totals[g.pk][2]),'ledgerCount':group_totals[g.pk][3]}
-                        for g in sorted(groups.values(),key=lambda g:g.name)],
+                        for g in sorted(groups.values(),key=lambda g:g.name)]+
+                        [{'id':None,'name':'Ungrouped','kind':kind,'parent':'','opening':str(v[0]),'debit':str(v[1]),'credit':str(v[2]),'balance':str(v[0]+v[1]-v[2]),'ledgerCount':v[3]} for kind,v in ungrouped_totals.items()],
         'costCategorySummary':[{'id':pk,'name':category_names[pk],'income':str(v[0]),'expenses':str(v[1]),'netProfit':str(v[0]-v[1])}
                                for pk,v in category_totals.items()],
         'customerProfit': {'rows':profit_rows,'details':profit_details,'unassignedIncome':str(unassigned_income),

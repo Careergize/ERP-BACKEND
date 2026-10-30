@@ -1,5 +1,5 @@
 from django.db import transaction, IntegrityError
-from rest_framework.views import APIView
+from .api import AccountingAPIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from .models import Book, Account, Party, Document, PostingEvent, AccountGroup, CostCategory, Currency, VoucherType
@@ -13,7 +13,7 @@ def access(user, write=False, admin=False):
         raise PermissionDenied('Your account cannot perform this accounting action.')
 
 
-class Bootstrap(APIView):
+class Bootstrap(AccountingAPIView):
     def get(self, request):
         access(request.user)
         b = Book.objects.first()
@@ -45,7 +45,7 @@ class Bootstrap(APIView):
         return self.get(request)
 
 
-class Masters(APIView):
+class Masters(AccountingAPIView):
     @transaction.atomic
     def post(self, request, kind):
         access(request.user, write=True)
@@ -110,7 +110,7 @@ def master_group(payload, expected):
     return group
 
 
-class Commands(APIView):
+class Commands(AccountingAPIView):
     def post(self, request):
         access(request.user, write=True)
         try:
@@ -122,13 +122,13 @@ class Commands(APIView):
         return Response(document_data(d),status=201)
 
 
-class Reports(APIView):
+class Reports(AccountingAPIView):
     def get(self,request):
         access(request.user)
         return Response(report(request.query_params.get('start'),request.query_params.get('end'),request.query_params.get('party'),request.query_params.get('account')))
 
 
-class ClosePeriod(APIView):
+class ClosePeriod(AccountingAPIView):
     @transaction.atomic
     def post(self,request):
         access(request.user, admin=True)
@@ -140,7 +140,7 @@ class ClosePeriod(APIView):
         return Response({'closedThrough':str(when)})
 
 
-class PostingQueue(APIView):
+class PostingQueue(AccountingAPIView):
     def get(self,request):
         access(request.user)
         return Response([{'source':e.source,'payload':e.payload,'error':e.error,'createdAt':e.created_at.isoformat()} for e in PostingEvent.objects.filter(document__isnull=True,cancelled=False).order_by('created_at')])
@@ -177,7 +177,7 @@ class PostingQueue(APIView):
         return Response(document_data(d))
 
 
-class TaxMapping(APIView):
+class TaxMapping(AccountingAPIView):
     @transaction.atomic
     def post(self,request):
         access(request.user,admin=True)
@@ -190,7 +190,7 @@ class TaxMapping(APIView):
         return Response({'ledAccount':code})
 
 
-class ImportMasters(APIView):
+class ImportMasters(AccountingAPIView):
     @transaction.atomic
     def post(self,request):
         access(request.user,write=True)
@@ -201,7 +201,7 @@ class ImportMasters(APIView):
         return Response({'detail':'Canonical customers and suppliers linked by stable IDs; names were not merged.'})
 
 
-class PurchaseBills(APIView):
+class PurchaseBills(AccountingAPIView):
     def get(self,request):
         access(request.user)
         from erp.models import PurchaseOrder
@@ -252,7 +252,7 @@ class PurchaseBills(APIView):
         return Response(document_data(doc),status=201)
 
 
-class CaptureSources(APIView):
+class CaptureSources(AccountingAPIView):
     @transaction.atomic
     def post(self,request):
         access(request.user,write=True)
