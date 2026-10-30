@@ -5,6 +5,23 @@ import django.db.models.functions.text
 from django.db import migrations, models
 
 
+def seed_finance_masters(apps, schema_editor):
+    Group = apps.get_model('accounting','AccountGroup')
+    Account = apps.get_model('accounting','Account')
+    Currency = apps.get_model('accounting','Currency')
+    Voucher = apps.get_model('accounting','VoucherType')
+    for kind,name in [('asset','Assets'),('liability','Liabilities'),('equity','Equity'),('income','Income'),('expense','Expenses')]:
+        group,_ = Group.objects.get_or_create(name=name,defaults={'kind':kind})
+        Account.objects.filter(kind=kind,group__isnull=True).update(group=group)
+    book = apps.get_model('accounting','Book').objects.first()
+    codes = set(apps.get_model('accounting','Document').objects.values_list('currency',flat=True).distinct())
+    if book: codes.add(book.currency)
+    for code in codes:
+        Currency.objects.get_or_create(code=code,defaults={'name':code,'symbol':code})
+    for kind,name in [('receipt','Receipt'),('payment','Payment'),('invoice','Sales'),('bill','Purchase'),('expense','Expense'),('transfer','Contra'),('journal','Journal')]:
+        Voucher.objects.get_or_create(name=name,defaults={'base_kind':kind})
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -74,4 +91,5 @@ class Migration(migrations.Migration):
             model_name='accountgroup',
             constraint=models.UniqueConstraint(django.db.models.functions.text.Lower('name'), name='accounting_group_name_unique'),
         ),
+        migrations.RunPython(seed_finance_masters, migrations.RunPython.noop),
     ]

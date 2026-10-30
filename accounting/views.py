@@ -68,6 +68,8 @@ class Masters(APIView):
         if kind == 'group-membership':
             model = Account if p.get('ledgerType')=='account' else Party if p.get('ledgerType')=='party' else None
             require(model is not None, 'Select a ledger type.')
+            require((model is Account and isinstance(p.get('ledger'),str)) or
+                    (model is Party and type(p.get('ledger')) is int), 'Select a valid ledger reference.')
             obj = model.objects.select_for_update().filter(pk=p.get('ledger')).first()
             require(obj is not None, 'Select an existing ledger.')
             expected = obj.kind if model is Account else 'asset' if obj.kind=='customer' else 'liability'

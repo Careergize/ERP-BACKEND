@@ -352,3 +352,98 @@ class AccountingTests(APITestCase):
         cost=event.document.journal.get(account_id='5100')
         self.assertEqual(cost.party.source,f'customer:{canonical.pk}')
         self.assertEqual(Decimal(next(r for r in self.report()['customerProfit']['rows'] if r['customerId']==cost.party_id)['costOfSales']),Decimal('50'))
+
+    def create_finance_master(self,master_kind,**payload):
+        response=self.client.post(f'/api/accounting/masters/{master_kind}/',payload,format='json')
+        self.assertIn(response.status_code,[200,201],response.data)
+        return response.data['id']
+
+    def test_finance_masters_nested_groups_ledgers_and_group_reports(self):
+        from .models import AccountGroup
+        root=self.create_finance_master('groups',name='Operating costs',kind='expense')
+        child=self.create_finance_master('groups',name='Office costs',kind='expense',parent=root)
+        self.create_finance_master('accounts',code='6110',name='Office rent',kind='expense',cash=False,group=child)
+        expense=self.command('expense',cashAccount='1100',items=[{'description':'Rent','quantity':'1','price':'50','account':'6110'}])
+        self.assertEqual(expense.status_code,201,expense.data)
+        rows={r['name']:r for r in self.report()['groupSummary']}
+        self.assertEqual(Decimal(rows['Office costs']['balance']),Decimal('50'))
+        self.assertEqual(Decimal(rows['Operating costs']['balance']),Decimal('50'))
+        self.assertEqual(rows['Operating costs']['ledgerCount'],1)
+        self.assertEqual(AccountGroup.objects.get(pk=child).parent_id,root)
+        boot=self.client.get('/api/accounting/setup/').data
+        self.assertEqual(next(a for a in boot['accounts'] if a['code']=='6110')['group_id'],child)
+        self.assertTrue(any(c['code']=='UGX' for c in boot['currencies']))
+        self.assertTrue(any(v['base_kind']=='journal' for v in boot['voucherTypes']))
+
+    def test_group_validation_case_duplicates_and_existing_membership(self):
+        root=self.create_finance_master('groups',name='Finance assets',kind='asset')
+        for payload in [{'name':'Finance assets','kind':'asset'},{'name':'finance ASSETS','kind':'asset'},
+                        {'name':'Bad child','kind':'expense','parent':root},{'name':'Bad parent','kind':'asset','parent':999999}]:
+            r=self.client.post('/api/accounting/masters/groups/',payload,format='json');self.assertEqual(r.status_code,400,r.data)
+        self.assertEqual(self.client.post('/api/accounting/masters/accounts/',{'code':'BAD','name':'Wrong classification','kind':'expense','group':root},format='json').status_code,400)
+        party=self.create_finance_master('parties',name='Grouped customer',kind='customer',group=root)
+        self.assertEqual(next(p for p in self.client.get('/api/accounting/setup/').data['parties'] if p['id']==party)['group_id'],root)
+        self.command('receipt',party=party,amount='15',cashAccount='1100')
+        grouped=next(g for g in self.report()['partyGroupSummary'] if g['id']==root)
+        self.assertEqual(Decimal(grouped['balance']),Decimal('-15'))
+        self.assertEqual(self.client.post('/api/accounting/masters/parties/',{'name':'Wrong supplier','kind':'supplier','group':root},format='json').status_code,400)
+        self.command('receipt',party=self.customer,amount='20',cashAccount='1100')
+        before=list(JournalLine.objects.values('id','debit','credit','account_id','party_id'))
+        r=self.client.post('/api/accounting/masters/group-membership/',{'ledgerType':'account','ledger':'1100','group':root},format='json')
+        self.assertEqual(r.status_code,200,r.data)
+        self.assertEqual(Account.objects.get(pk='1100').group_id,root)
+        self.assertEqual(before,list(JournalLine.objects.values('id','debit','credit','account_id','party_id')))
+        self.assertEqual(self.client.post('/api/accounting/masters/group-membership/',{'ledgerType':'account','ledger':'6100','group':root},format='json').status_code,400)
+        r=self.client.post('/api/accounting/masters/group-membership/',{'ledgerType':'account','ledger':'1100','group':None},format='json')
+        self.assertEqual(r.status_code,200,r.data);self.assertIsNone(Account.objects.get(pk='1100').group_id)
+
+    def test_custom_voucher_cost_category_and_currency_posting(self):
+        category=self.create_finance_master('cost-categories',name='Administration')
+        voucher=self.create_finance_master('voucher-types',name='Office expense',baseKind='expense')
+        currency=self.create_finance_master('currencies',code='USD',name='US Dollar',symbol='$')
+        self.assertEqual(currency,'USD')
+        r=self.command('expense',currency='USD',fx='2',voucherType=voucher,costCategory=category,cashAccount='1200',items=[{'description':'Office fee','quantity':'1','price':'20'}])
+        self.assertEqual(r.status_code,201,r.data)
+        self.assertEqual(r.data['voucherTypeName'],'Office expense');self.assertEqual(r.data['costCategoryName'],'Administration')
+        self.assertEqual(r.data['currency'],'USD')
+        data=self.report();self.assertEqual(Decimal(next(c for c in data['costCategorySummary'] if c['id']==category)['expenses']),Decimal('40'))
+        self.assertEqual(data['transactions'][0]['voucherType'],'Office expense')
+        self.assertEqual(self.command('receipt',party=self.customer,amount='10',cashAccount='1100',voucherType=voucher).status_code,400)
+        self.assertEqual(self.command('expense',cashAccount='1100',costCategory=999999,items=[{'description':'Bad','quantity':'1','price':'1'}]).status_code,400)
+        reversed_doc=self.command('reverse',document=r.data['id'],date='2026-03-01',notes='Correct the office fee')
+        self.assertEqual(reversed_doc.status_code,201,reversed_doc.data)
+        self.assertEqual(reversed_doc.data['costCategoryName'],'Administration')
+        self.assertEqual(Decimal(next(c for c in self.report(end='2026-03-31')['costCategorySummary'] if c['id']==category)['expenses']),Decimal('0'))
+        self.assertEqual(Decimal(next(c for c in self.report()['costCategorySummary'] if c['id']==category)['expenses']),Decimal('40'))
+
+    def test_master_duplicates_unsupported_types_and_role_authority(self):
+        for kind,payload in [('cost-categories',{'name':'Factory overhead'}),('voucher-types',{'name':'Customer collection','baseKind':'receipt'}),('currencies',{'code':'EUR','name':'Euro','symbol':'EUR'})]:
+            self.create_finance_master(kind,**payload)
+            duplicate={**payload,**({'name':payload['name'].upper()} if kind!='currencies' else {})}
+            self.assertEqual(self.client.post(f'/api/accounting/masters/{kind}/',duplicate,format='json').status_code,400)
+        for kind,payload in [('voucher-types',{'name':'Unsafe','baseKind':'erase'}),('currencies',{'code':'usd','name':'Lowercase'}),('currencies',{'code':'USDD','name':'Long code'})]:
+            self.assertEqual(self.client.post(f'/api/accounting/masters/{kind}/',payload,format='json').status_code,400)
+        self.client.force_authenticate(self.accounts)
+        for kind,payload in [('groups',{'name':'Clerk group','kind':'expense'}),('cost-categories',{'name':'Clerk category'}),('currencies',{'code':'GBP','name':'Pound'}),('voucher-types',{'name':'Clerk type','baseKind':'payment'}),('accounts',{'code':'9999','name':'Clerk general ledger','kind':'expense'})]:
+            self.assertEqual(self.client.post(f'/api/accounting/masters/{kind}/',payload,format='json').status_code,403)
+        self.assertEqual(self.client.post('/api/accounting/masters/parties/',{'name':'Clerk customer','kind':'customer'},format='json').status_code,200)
+
+    def test_custom_journal_type_posts_balanced_ledgers_and_preserves_rules(self):
+        group=self.create_finance_master('groups',name='Other revenue',kind='income')
+        self.create_finance_master('accounts',code='4300',name='Service income',kind='income',group=group)
+        voucher=self.create_finance_master('voucher-types',name='Service adjustment',baseKind='journal')
+        lines=[{'account':'1300','debit':'50','party':self.customer},{'account':'4300','credit':'50','party':self.customer}]
+        r=self.command('journal',voucherType=voucher,lines=lines)
+        self.assertEqual(r.status_code,201,r.data)
+        self.assertEqual(r.data['voucherTypeName'],'Service adjustment')
+        self.assertEqual(Decimal(self.report()['profitLoss']['income']),Decimal('50'))
+        self.assertEqual(Decimal(self.report(party=self.customer)['ledgerClosing']),Decimal('50'))
+        self.assertEqual(self.report()['trialDifference'],'0.00')
+        customer=next(c for c in self.report()['customerProfit']['rows'] if c['customerId']==self.customer)
+        self.assertEqual(Decimal(customer['income']),Decimal('50'))
+        for bad_lines in [[{'account':'1300','debit':'50'},{'account':'4300','credit':'50'}],
+                          [{'account':'1100','debit':'51'},{'account':'4300','credit':'50'}],
+                          [{'account':'1400','debit':'50'},{'account':'4300','credit':'50'}]]:
+            r=self.command('journal',lines=bad_lines);self.assertEqual(r.status_code,400,r.data)
+        self.assertEqual(self.command('journal',currency='USD',fx='2',lines=lines).status_code,400)
+        self.assertEqual(self.command('journal',lines=[{'account':'1300','debit':'50','party':self.supplier},{'account':'4300','credit':'50'}]).status_code,400)

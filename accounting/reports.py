@@ -1,7 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 from django.db.models import Sum
-from .models import Book, Account, Party, Document, JournalLine, StockValue, ValueMovement, CostAssignment
+from .models import Book, Account, Party, Document, JournalLine, StockValue, ValueMovement, CostAssignment, AccountGroup
 from .services import day, require, ZERO, outstanding
 
 
@@ -17,6 +17,8 @@ def document_data(d, as_of=None):
         'unallocated': str(d.total - sum((a.amount for a in dated_allocations), ZERO)) if d.kind in {'receipt','payment'} else None,
         'reversed': hasattr(d, 'reversal') and (not as_of or d.reversal.date <= as_of), 'reversalOf': d.reversal_of_id, 'notes': d.notes, 'source': d.source,
         'actor': d.actor_id, 'createdAt': d.created_at.isoformat(), 'allocations': allocations,
+        'voucherType':d.voucher_type_id, 'voucherTypeName':d.voucher_type.name if d.voucher_type else '',
+        'costCategory':d.cost_category_id, 'costCategoryName':d.cost_category.name if d.cost_category else '',
         'journal': [{'id': j.pk, 'account': j.account_id, 'accountName': j.account.name, 'cash': j.account.cash,
                      'party': j.party_id, 'partyName': j.party.name if j.party else '',
                      'debit': str(j.debit), 'credit': str(j.credit)}
@@ -32,16 +34,21 @@ def report(start, end, party=None, account_code=None):
     require(start <= end, 'Start date must be on or before end date.')
     book = Book.objects.first()
     require(book is not None, 'Configure accounting first.')
-    all_lines = JournalLine.objects.select_related('document__party', 'document__reversal', 'account', 'party').filter(document__date__lte=end).order_by('document__date', 'document_id', 'id')
+    all_lines = JournalLine.objects.select_related('document__party', 'document__reversal', 'document__cost_category', 'document__voucher_type', 'account', 'party').filter(document__date__lte=end).order_by('document__date', 'document_id', 'id')
     balances = defaultdict(lambda: [ZERO, ZERO, ZERO])
     customer = defaultdict(lambda: [ZERO, ZERO, ZERO])
     profitability = defaultdict(lambda: [ZERO, ZERO, ZERO])
     profit_details = []
     unassigned_income = ZERO; unassigned_cost = ZERO
+    category_totals = defaultdict(lambda: [ZERO, ZERO])
+    category_names = {}
     ledger = []; running = ZERO; opening = ZERO
     for l in all_lines:
         signed = l.debit - l.credit
         if l.document.date >= start and l.account.kind in {'income', 'expense'}:
+            category = l.document.cost_category
+            category_names[l.document.cost_category_id] = category.name if category else 'Uncategorised'
+            category_totals[l.document.cost_category_id][0 if l.account.kind=='income' else 1] += -signed if l.account.kind=='income' else signed
             # Older sales journals did not tag income lines; their document party
             # is still canonical evidence. Expense reclassification credits must
             # remain unassigned even though the command itself has a customer.
@@ -72,13 +79,14 @@ def report(start, end, party=None, account_code=None):
                 opening += signed
             else:
                 ledger.append({'date': str(l.document.date), 'document': l.document_id, 'number': l.document.number,
+                    'voucherType':l.document.voucher_type.name if l.document.voucher_type else l.document.kind,
                     'kind': l.document.kind, 'party': l.party.name if l.party else '', 'debit': str(l.debit), 'credit': str(l.credit),
                     'balance': str(running), 'currency': l.document.currency, 'foreignAmount': str(l.foreign_amount)})
     trial = []; income = ZERO; expenses = ZERO
     sheet = defaultdict(lambda: ZERO)
-    for a in Account.objects.all().order_by('code'):
+    for a in Account.objects.select_related('group').order_by('code'):
         b = balances[a.pk]; close = b[0]+b[1]-b[2]
-        trial.append({'code': a.pk, 'name': a.name, 'kind': a.kind, 'opening': str(b[0]), 'debit': str(b[1]), 'credit': str(b[2]), 'balance': str(close), 'closingDebit': str(max(close, ZERO)), 'closingCredit': str(max(-close, ZERO))})
+        trial.append({'code': a.pk, 'name': a.name, 'kind': a.kind, 'groupId':a.group_id, 'group':a.group.name if a.group else 'Ungrouped', 'opening': str(b[0]), 'debit': str(b[1]), 'credit': str(b[2]), 'balance': str(close), 'closingDebit': str(max(close, ZERO)), 'closingCredit': str(max(-close, ZERO))})
         if a.kind == 'income': income += b[2]-b[1]
         if a.kind == 'expense': expenses += b[1]-b[2]
         sheet[a.kind] += close
@@ -93,8 +101,9 @@ def report(start, end, party=None, account_code=None):
         if d.kind != 'opening':
             cash_flow[d.cash_class] += n
             cash_details[d.cash_class][0] += max(n,ZERO); cash_details[d.cash_class][1] += max(-n,ZERO)
-    parties = {p.pk:p for p in Party.objects.all()}
-    party_totals = [{'id': pk, 'name': parties[pk].name, 'kind': parties[pk].kind, 'opening': str(v[0]), 'debit': str(v[1]), 'credit': str(v[2]), 'balance': str(v[0]+v[1]-v[2])} for pk,v in customer.items()]
+    parties = {p.pk:p for p in Party.objects.select_related('group')}
+    party_totals = [{'id': pk, 'name': parties[pk].name, 'kind': parties[pk].kind, 'groupId':parties[pk].group_id,
+                    'group':parties[pk].group.name if parties[pk].group else 'Ungrouped', 'opening': str(v[0]), 'debit': str(v[1]), 'credit': str(v[2]), 'balance': str(v[0]+v[1]-v[2])} for pk,v in customer.items()]
     docs = Document.objects.filter(date__range=(start,end)).select_related('party','reversal_of').prefetch_related('items','allocations__bill__items','allocations__item_line','settlements__payment','journal').order_by('-date','-id')
     # Financial sales/purchases and expense rows include reversals as signed rows.
     transaction_rows = []
@@ -104,6 +113,8 @@ def report(start, end, party=None, account_code=None):
         sign = -1 if d.kind == 'reverse' else 1
         for i in original.items.all():
             transaction_rows.append({'date': str(d.date), 'document': d.pk, 'number': d.number, 'kind': original.kind,
+                'voucherType':original.voucher_type.name if original.voucher_type else original.kind,
+                'costCategory':original.cost_category.name if original.cost_category else 'Uncategorised',
                 'party': original.party.name if original.party else '', 'item': i.item, 'description': i.description,
                 'quantity': str(i.quantity*sign), 'unit': i.unit, 'price': str(i.price), 'net': str(i.net*sign), 'tax': str(i.tax*sign),
                 'currency': original.currency, 'baseNet': str(i.net*original.fx*sign), 'category': i.category.name if i.category else ''})
@@ -127,7 +138,32 @@ def report(start, end, party=None, account_code=None):
             assignable.append({'line':line.pk,'document':line.document.number,'date':str(line.document.date),
                                'account':line.account.name,'remaining':str(line.debit-used)})
     from .commitments import order_commitments
+    groups = {g.pk:g for g in AccountGroup.objects.all()}
+    group_totals = defaultdict(lambda: [ZERO,ZERO,ZERO,0])
+    for row in trial:
+        group_id = row['groupId']; visited = set()
+        while group_id in groups and group_id not in visited:
+            visited.add(group_id); values = group_totals[group_id]
+            values[0] += Decimal(row['opening']); values[1] += Decimal(row['debit']); values[2] += Decimal(row['credit']); values[3] += 1
+            group_id = groups[group_id].parent_id
+    party_group_totals = defaultdict(lambda: [ZERO,ZERO,ZERO,0])
+    for row in party_totals:
+        group_id = row['groupId']; visited = set()
+        while group_id in groups and group_id not in visited:
+            visited.add(group_id); values = party_group_totals[group_id]
+            values[0] += Decimal(row['opening']); values[1] += Decimal(row['debit']); values[2] += Decimal(row['credit']); values[3] += 1
+            group_id = groups[group_id].parent_id
     return {'start': str(start), 'end': str(end), 'currency': book.currency,
+        'partyGroupSummary':[{'id':g.pk,'name':g.name,'kind':g.kind,'parent':groups[g.parent_id].name if g.parent_id else '',
+                         'opening':str(party_group_totals[g.pk][0]),'debit':str(party_group_totals[g.pk][1]),'credit':str(party_group_totals[g.pk][2]),
+                         'balance':str(party_group_totals[g.pk][0]+party_group_totals[g.pk][1]-party_group_totals[g.pk][2]),'partyCount':party_group_totals[g.pk][3]}
+                        for g in sorted(groups.values(),key=lambda g:g.name) if g.kind in {'asset','liability'}],
+        'groupSummary':[{'id':g.pk,'name':g.name,'kind':g.kind,'parent':groups[g.parent_id].name if g.parent_id else '',
+                         'opening':str(group_totals[g.pk][0]),'debit':str(group_totals[g.pk][1]),'credit':str(group_totals[g.pk][2]),
+                         'balance':str(group_totals[g.pk][0]+group_totals[g.pk][1]-group_totals[g.pk][2]),'ledgerCount':group_totals[g.pk][3]}
+                        for g in sorted(groups.values(),key=lambda g:g.name)],
+        'costCategorySummary':[{'id':pk,'name':category_names[pk],'income':str(v[0]),'expenses':str(v[1]),'netProfit':str(v[0]-v[1])}
+                               for pk,v in category_totals.items()],
         'customerProfit': {'rows':profit_rows,'details':profit_details,'unassignedIncome':str(unassigned_income),
                           'unassignedCosts':str(unassigned_cost),'unassignedNet':str(unassigned_income-unassigned_cost),
                           'companyNetProfit':str(income-expenses)},
