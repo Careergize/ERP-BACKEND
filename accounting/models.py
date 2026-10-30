@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Lower
 
 
 class AppendOnlyQuerySet(models.QuerySet):
@@ -37,18 +38,50 @@ class Book(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
 
 
+class AccountGroup(models.Model):
+    name = models.CharField(max_length=150)
+    kind = models.CharField(max_length=12, choices=[(v, v) for v in ['asset', 'liability', 'equity', 'income', 'expense']])
+    parent = models.ForeignKey('self', null=True, blank=True, related_name='children', on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(Lower('name'), name='accounting_group_name_unique')]
+
+
+class CostCategory(models.Model):
+    name = models.CharField(max_length=150)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(Lower('name'), name='accounting_cost_category_unique')]
+
+
+class Currency(models.Model):
+    code = models.CharField(max_length=3, primary_key=True)
+    name = models.CharField(max_length=100)
+    symbol = models.CharField(max_length=12, blank=True)
+
+
+class VoucherType(models.Model):
+    name = models.CharField(max_length=100)
+    base_kind = models.CharField(max_length=25)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(Lower('name'), name='accounting_voucher_type_unique')]
+
+
 class Account(models.Model):
     code = models.CharField(max_length=30, primary_key=True)
     name = models.CharField(max_length=150)
     kind = models.CharField(max_length=12, choices=[(v, v) for v in ['asset', 'liability', 'equity', 'income', 'expense']])
     cash = models.BooleanField(default=False)
     control = models.BooleanField(default=False)
+    group = models.ForeignKey(AccountGroup, null=True, blank=True, on_delete=models.PROTECT, related_name='accounts')
 
 
 class Party(models.Model):
     name = models.CharField(max_length=200)
     kind = models.CharField(max_length=10, choices=[('customer', 'Customer'), ('supplier', 'Supplier')])
     source = models.CharField(max_length=100, unique=True, null=True)
+    group = models.ForeignKey(AccountGroup, null=True, blank=True, on_delete=models.PROTECT, related_name='parties')
 
 
 class Document(models.Model):
@@ -65,6 +98,8 @@ class Document(models.Model):
     total = models.DecimalField(max_digits=24, decimal_places=2)
     notes = models.TextField(blank=True)
     cash_class = models.CharField(max_length=15, default='operating')
+    voucher_type = models.ForeignKey(VoucherType, null=True, blank=True, on_delete=models.PROTECT)
+    cost_category = models.ForeignKey(CostCategory, null=True, blank=True, on_delete=models.PROTECT)
     reversal_of = models.OneToOneField('self', null=True, on_delete=models.PROTECT, related_name='reversal')
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)

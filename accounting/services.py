@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Sum, Q
 from rest_framework.exceptions import ValidationError
 
-from .models import Book, Account, Party, Document, DocumentLine, JournalLine, Allocation, StockValue, ValueMovement, CostAssignment
+from .models import Book, Account, Party, Document, DocumentLine, JournalLine, Allocation, StockValue, ValueMovement, CostAssignment, VoucherType, CostCategory
 
 ZERO = Decimal('0')
 CENT = Decimal('.01')
@@ -115,7 +115,16 @@ def post(payload, user, source=None):
     if source:
         require(not Document.objects.filter(source=source).exists(), 'This source document is already posted.')
     kind = payload.get('kind')
-    require(kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate', 'expense', 'transfer', 'opening', 'stock-receipt', 'stock-issue', 'reverse', 'assign-cost'}, 'Unsupported accounting command.')
+    require(kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate', 'expense', 'transfer', 'opening', 'stock-receipt', 'stock-issue', 'reverse', 'assign-cost', 'journal'}, 'Unsupported accounting command.')
+    voucher_type = None; cost_category = None
+    if payload.get('voucherType') not in (None, ''):
+        require(type(payload['voucherType']) is int, 'Select a saved voucher type.')
+        voucher_type = VoucherType.objects.filter(pk=payload['voucherType'],base_kind=kind).first()
+        require(voucher_type is not None, 'Voucher type must match this transaction behaviour.')
+    if payload.get('costCategory') not in (None, ''):
+        require(type(payload['costCategory']) is int, 'Select a saved cost category.')
+        cost_category = CostCategory.objects.filter(pk=payload['costCategory']).first()
+        require(cost_category is not None, 'Select a valid cost category.')
     when = day(payload.get('date'))
     require(when >= book.start_date and (not book.closed_through or when > book.closed_through), 'Date is before cutover or in a closed period.')
     currency = payload.get('currency', book.currency)
@@ -137,7 +146,7 @@ def post(payload, user, source=None):
     doc = Document.objects.create(command=command, digest=digest, source=source, kind=kind,
         number=text(payload.get('number'), 80), date=when, currency=currency, fx=fx, party=party,
         total=0, notes=str(payload.get('notes', ''))[:2000], actor=user,
-        cash_class=payload.get('cashClass', 'operating'))
+        cash_class=payload.get('cashClass', 'operating'), voucher_type=voucher_type, cost_category=cost_category)
     require(doc.cash_class in {'operating', 'investing', 'financing'}, 'Select a cash-flow classification.')
     if kind in {'invoice', 'bill', 'expense'}:
         items = payload.get('items')
@@ -229,17 +238,19 @@ def post(payload, user, source=None):
         a, b = account(payload.get('fromAccount'), cash=True), account(payload.get('toAccount'), cash=True)
         require(a != b, 'Choose different cash/bank accounts.')
         journal(doc, a.pk, -doc.total); journal(doc, b.pk, doc.total)
-    elif kind == 'opening':
-        require(when == book.start_date and currency == book.currency, 'Opening balances must use the cutover date and reporting currency.')
+    elif kind in {'opening', 'journal'}:
+        require(currency == book.currency, 'Journal and opening entries use reporting currency.')
+        if kind == 'opening': require(when == book.start_date, 'Opening balances must use the cutover date.')
         rows = payload.get('lines')
         require(isinstance(rows, list) and 2 <= len(rows) <= 500, 'Enter a balanced opening journal.')
         for row in rows:
             a = account(row.get('account')); debit, credit = dec(row.get('debit', '0')), dec(row.get('credit', '0'))
-            require(a.kind in {'asset','liability','equity'}, 'Opening balances use balance sheet accounts.')
+            if kind == 'opening': require(a.kind in {'asset','liability','equity'}, 'Opening balances use balance sheet accounts.')
             require((debit > 0) != (credit > 0), 'Each opening line must have only a debit or a credit.')
             p = Party.objects.filter(pk=row.get('party')).first() if row.get('party') else None
+            require(not row.get('party') or p is not None, 'Select a valid journal party.')
             require(a.pk not in {'1300','2100'} or (p and p.kind == ('customer' if a.pk == '1300' else 'supplier')), 'Opening control balances require the correct party.')
-            require(a.pk != '1400', 'Set inventory opening through valued stock receipts against opening equity.')
+            require(a.pk != '1400', 'Inventory entries must use the valuation workflow.')
             journal(doc, a.pk, debit-credit, p, debit-credit if p else ZERO)
         doc.total = sum((j.debit for j in doc.journal.all()), ZERO)
     elif kind in {'stock-receipt', 'stock-issue'}:
@@ -271,6 +282,7 @@ def post(payload, user, source=None):
             ValueMovement.objects.create(document=doc,stock=stock,quantity=-movement.quantity,value=-movement.value)
         require(bool(doc.notes.strip()), 'A reversal reason is required.')
         doc.reversal_of = original; doc.total = original.total; doc.currency = original.currency; doc.fx = original.fx; doc.party = original.party; doc.cash_class = original.cash_class
+        doc.cost_category = original.cost_category
         for line in original.journal.all():
             journal(doc, line.account_id, line.credit-line.debit, line.party, -line.foreign_amount)
         # Later application of an advance can have its own FX settlement journal.

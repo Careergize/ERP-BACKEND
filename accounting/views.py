@@ -2,7 +2,7 @@ from django.db import transaction, IntegrityError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from .models import Book, Account, Party, Document, PostingEvent
+from .models import Book, Account, Party, Document, PostingEvent, AccountGroup, CostCategory, Currency, VoucherType
 from .services import ACCOUNTS, require, text, day, post
 from .reports import report, document_data
 
@@ -18,8 +18,12 @@ class Bootstrap(APIView):
         access(request.user)
         b = Book.objects.first()
         return Response({'book': {'company':b.company,'currency':b.currency,'startDate':str(b.start_date),'fiscalMonth':b.fiscal_month,'valuation':b.valuation,'ledAccount':b.led_account,'closedThrough':str(b.closed_through) if b.closed_through else ''} if b else None,
-            'accounts':list(Account.objects.order_by('code').values('code','name','kind','cash','control')),
-            'parties':list(Party.objects.order_by('name').values('id','name','kind','source')),
+            'accounts':list(Account.objects.order_by('code').values('code','name','kind','cash','control','group_id')),
+            'parties':list(Party.objects.order_by('name').values('id','name','kind','source','group_id')),
+            'groups':list(AccountGroup.objects.order_by('name').values('id','name','kind','parent_id')),
+            'costCategories':list(CostCategory.objects.order_by('name').values('id','name')),
+            'currencies':list(Currency.objects.order_by('code').values('code','name','symbol')),
+            'voucherTypes':list(VoucherType.objects.order_by('name').values('id','name','base_kind')),
             'canWrite':request.user.is_superuser or request.user.effective_role in {'admin','accounts'},
             'canConfigure':request.user.is_superuser or request.user.effective_role == 'admin'})
 
@@ -36,6 +40,8 @@ class Bootstrap(APIView):
         Book.objects.create(company=text(p.get('company'),200),currency=p['currency'],start_date=day(p.get('startDate')),fiscal_month=month,created_by=request.user)
         for code,name,kind,cash in ACCOUNTS:
             Account.objects.create(code=code,name=name,kind=kind,cash=cash,control=code in {'1300','1400','1500','2100','2200','2300','1600'})
+        from .masters import seed_masters
+        seed_masters(book=Book.objects.first(), account_model=Account)
         return self.get(request)
 
 
@@ -46,18 +52,60 @@ class Masters(APIView):
         p = request.data
         if kind == 'parties':
             require(p.get('kind') in {'customer','supplier'}, 'Select customer or supplier.')
-            obj = Party.objects.create(name=text(p.get('name'),200),kind=p['kind'])
+            group = master_group(p, 'asset' if p['kind']=='customer' else 'liability')
+            obj = Party.objects.create(name=text(p.get('name'),200),kind=p['kind'],group=group)
             return Response({'id':obj.pk})
         if kind == 'accounts':
             access(request.user, admin=True)
             require(p.get('kind') in {'asset','liability','equity','income','expense'}, 'Select an account type.')
             require(type(p.get('cash',False)) is bool and (not p.get('cash') or p['kind']=='asset'), 'Cash/bank accounts must be assets.')
             try:
-                obj = Account.objects.create(code=text(p.get('code'),30),name=text(p.get('name'),150),kind=p['kind'],cash=p.get('cash',False))
+                obj = Account.objects.create(code=text(p.get('code'),30),name=text(p.get('name'),150),kind=p['kind'],cash=p.get('cash',False),group=master_group(p,p['kind']))
             except IntegrityError:
                 raise ValidationError('Account code already exists.')
             return Response({'id':obj.pk})
-        raise ValidationError('Unknown master type.')
+        access(request.user, admin=True)
+        if kind == 'group-membership':
+            model = Account if p.get('ledgerType')=='account' else Party if p.get('ledgerType')=='party' else None
+            require(model is not None, 'Select a ledger type.')
+            obj = model.objects.select_for_update().filter(pk=p.get('ledger')).first()
+            require(obj is not None, 'Select an existing ledger.')
+            expected = obj.kind if model is Account else 'asset' if obj.kind=='customer' else 'liability'
+            obj.group = master_group(p, expected)
+            obj.save(update_fields=['group'])
+            return Response({'id':obj.pk, 'group':obj.group_id})
+        try:
+            if kind == 'groups':
+                require(p.get('kind') in {'asset','liability','equity','income','expense'}, 'Select a group classification.')
+                parent = master_group({'group':p.get('parent')}, p['kind'])
+                obj = AccountGroup.objects.create(name=text(p.get('name'),150),kind=p['kind'],parent=parent)
+            elif kind == 'cost-categories':
+                obj = CostCategory.objects.create(name=text(p.get('name'),150))
+            elif kind == 'currencies':
+                import re
+                code = p.get('code')
+                require(isinstance(code,str) and re.fullmatch('[A-Z]{3}',code), 'Use a three-letter uppercase currency code.')
+                symbol = p.get('symbol','')
+                require(isinstance(symbol,str) and len(symbol)<=12, 'Currency symbol must be at most 12 characters.')
+                obj = Currency.objects.create(code=code,name=text(p.get('name'),100),symbol=symbol)
+            elif kind == 'voucher-types':
+                from .masters import BASE_VOUCHERS
+                require(p.get('baseKind') in BASE_VOUCHERS, 'Choose a supported voucher behaviour.')
+                obj = VoucherType.objects.create(name=text(p.get('name'),100),base_kind=p['baseKind'])
+            else:
+                raise ValidationError('Unknown master type.')
+        except IntegrityError:
+            raise ValidationError('A master with this name or code already exists.')
+        return Response({'id':obj.pk},status=201)
+
+
+def master_group(payload, expected):
+    value = payload.get('group')
+    if value in (None, ''): return None
+    require(type(value) is int, 'Select a saved account group.')
+    group = AccountGroup.objects.filter(pk=value).first()
+    require(group is not None and group.kind==expected, 'Group classification must match the ledger or parent group.')
+    return group
 
 
 class Commands(APIView):
