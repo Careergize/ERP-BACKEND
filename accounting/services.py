@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework.exceptions import ValidationError
 
-from .models import Book, Account, Party, Document, DocumentLine, JournalLine, Allocation, StockValue, ValueMovement
+from .models import Book, Account, Party, Document, DocumentLine, JournalLine, Allocation, StockValue, ValueMovement, CostAssignment
 
 ZERO = Decimal('0')
 CENT = Decimal('.01')
@@ -115,7 +115,7 @@ def post(payload, user, source=None):
     if source:
         require(not Document.objects.filter(source=source).exists(), 'This source document is already posted.')
     kind = payload.get('kind')
-    require(kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate', 'expense', 'transfer', 'opening', 'stock-receipt', 'stock-issue', 'reverse'}, 'Unsupported accounting command.')
+    require(kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate', 'expense', 'transfer', 'opening', 'stock-receipt', 'stock-issue', 'reverse', 'assign-cost'}, 'Unsupported accounting command.')
     when = day(payload.get('date'))
     require(when >= book.start_date and (not book.closed_through or when > book.closed_through), 'Date is before cutover or in a closed period.')
     currency = payload.get('currency', book.currency)
@@ -127,6 +127,13 @@ def post(payload, user, source=None):
     if kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate'}:
         party = Party.objects.filter(pk=payload.get('party')).first()
         require(party is not None and (kind=='allocate' or party.kind == ('customer' if kind in {'invoice', 'receipt'} else 'supplier')), 'Select the correct customer or supplier.')
+    customer = None
+    if payload.get('customer'):
+        customer = Party.objects.filter(pk=payload['customer'], kind='customer').first()
+        require(customer is not None, 'Select a valid customer for cost attribution.')
+    if kind == 'assign-cost':
+        require(customer is not None, 'Select the customer receiving this cost.')
+        party = customer
     doc = Document.objects.create(command=command, digest=digest, source=source, kind=kind,
         number=text(payload.get('number'), 80), date=when, currency=currency, fx=fx, party=party,
         total=0, notes=str(payload.get('notes', ''))[:2000], actor=user,
@@ -145,12 +152,13 @@ def post(payload, user, source=None):
             if kind == 'invoice':
                 tax_account=row.get('taxAccount','2200') if source else '2200'
                 require(account(tax_account).kind=='liability','Sales tax must map to a liability account.')
-                journal(doc, '4100', -money(net * fx)); journal(doc, tax_account, -money(tax * fx))
+                journal(doc, '4100', -money(net * fx), party); journal(doc, tax_account, -money(tax * fx))
             else:
                 target = row.get('account', '6100')
                 a = account(target)
                 require((not a.control and not a.cash and a.kind in {'expense', 'asset'}) or (kind == 'bill' and target == '2300'), 'Select an expense/asset category or goods-received clearing for a matched stock bill.')
-                journal(doc, target, money(net * fx)); journal(doc, '1500', money(tax * fx))
+                require(not customer or a.kind == 'expense', 'Customer costs must use expense categories, not assets or clearing.')
+                journal(doc, target, money(net * fx), customer); journal(doc, '1500', money(tax * fx))
                 line.category = a; line.save(update_fields=['category'])
         doc.total = money(total)
         require(doc.total > 0, 'Document total must be positive.')
@@ -197,6 +205,21 @@ def post(payload, user, source=None):
             allocated=payment_doc.allocations.aggregate(n=Sum('amount'))['n'] or ZERO
             require(allocated<=payment_doc.total,'Allocations exceed the original payment amount.')
         else:require(used <= doc.total, 'Allocations exceed payment amount.')
+    elif kind == 'assign-cost':
+        require(currency == book.currency, 'Assign costs in reporting currency.')
+        line = JournalLine.objects.select_related('document', 'account').filter(pk=payload.get('sourceLine')).first()
+        require(line is not None and line.account.kind == 'expense' and line.debit > 0 and not line.party_id,
+                'Select an unassigned expense debit.')
+        require(line.document.kind not in {'assign-cost', 'reverse'} and not hasattr(line.document, 'reversal'),
+                'Select an active original expense, not a reclassification or reversal.')
+        require(when >= line.document.date, 'Cost assignment cannot precede the source expense.')
+        used = CostAssignment.objects.filter(source_line=line, document__reversal__isnull=True).aggregate(n=Sum('amount'))['n'] or ZERO
+        doc.total = dec(payload.get('amount'), positive=True)
+        require(doc.total <= line.debit-used, 'Assignment exceeds the remaining unassigned source cost.')
+        require(bool(doc.notes.strip()), 'Record the reason for assigning this cost.')
+        journal(doc, line.account_id, doc.total, customer)
+        journal(doc, line.account_id, -doc.total)
+        CostAssignment.objects.create(document=doc, source_line=line, amount=doc.total)
     elif kind == 'transfer':
         doc.total = dec(payload.get('amount'), positive=True)
         require(currency == book.currency, 'Cash transfers currently require reporting currency.')
@@ -225,11 +248,14 @@ def post(payload, user, source=None):
         doc.total = abs(moved)
         contra = payload.get('contra', '2300' if kind == 'stock-receipt' else '5100')
         require(contra in ({'2300','3100','1600'} if kind == 'stock-receipt' else {'5100','1600','6100'}), 'Select an approved stock contra account.')
-        journal(doc, '1400', moved); journal(doc, contra, -moved)
+        require(not customer or (kind == 'stock-issue' and account(contra).kind == 'expense'), 'Customer stock costs require an expense issue.')
+        journal(doc, '1400', moved); journal(doc, contra, -moved, customer)
     elif kind == 'reverse':
         original = Document.objects.select_for_update().filter(pk=payload.get('document')).first()
         require(original is not None and original.kind != 'reverse' and not Document.objects.filter(reversal_of=original).exists() and when >= original.date, 'Select an unreversed original document dated on or before reversal.')
         require(not original.settlements.filter(payment__reversal__isnull=True).exists(), 'Reverse allocated payments before reversing an invoice/bill.')
+        require(not CostAssignment.objects.filter(source_line__document=original, document__reversal__isnull=True).exists(),
+                'Reverse active customer cost assignments before reversing their source expense.')
         require(original.kind!='allocate', 'Reverse the original payment to undo its allocations.')
         for movement in original.valuations.select_related('stock'):
             stock=StockValue.objects.select_for_update().get(pk=movement.stock_id)

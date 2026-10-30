@@ -31,7 +31,7 @@ def shared_saved(key, content, previous, user):
         from erp.models import WorkflowOrder
         for r in content:
             if r['id'] in old: continue
-            order = WorkflowOrder.objects.filter(pk=r['orderId']).first()
+            order = WorkflowOrder.objects.filter(pk=str(r['orderId']).removeprefix('wf-order-')).first()
             customer = order.data.get('customerId') if order else None
             party = None
             if customer:
@@ -53,7 +53,15 @@ def shared_saved(key, content, previous, user):
         prior={r['id']:r for r in (previous or {}).get('dispatches',[])}
         for r in content.get('dispatches',[]):
             if r['status']=='Confirmed' and r['id'] not in prior:
-                enqueue('dispatch:'+r['id'],{'kind':'stock-issue','number':'VAL-'+r['number'],'date':r['date'],'item':'finished:'+r['productId'],'unit':r['unit'],'quantity':str(r['quantity']),'contra':'5100'},user)
+                from erp.models import WorkflowOrder, Customer
+                order_key = str(r.get('orderId', '')).removeprefix('wf-order-')
+                order = WorkflowOrder.objects.filter(pk=order_key).first() if order_key.isdigit() else None
+                canonical = Customer.objects.filter(pk=order.data.get('customerId')).first() if order else None
+                customer = None
+                if canonical:
+                    customer, _ = Party.objects.get_or_create(source=f'customer:{canonical.pk}', defaults={'name':canonical.name,'kind':'customer'})
+                enqueue('dispatch:'+r['id'],{'kind':'stock-issue','number':'VAL-'+r['number'],'date':r['date'],'item':'finished:'+r['productId'],'unit':r['unit'],'quantity':str(r['quantity']),'contra':'5100',
+                    **({'customer':customer.pk} if customer else {})},user)
             elif r['status']=='Cancelled' and prior.get(r['id'],{}).get('status')=='Confirmed':
                 original=PostingEvent.objects.select_for_update().filter(pk='dispatch:'+r['id']).first()
                 if original and original.document_id:

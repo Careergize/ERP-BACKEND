@@ -1,7 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 from django.db.models import Sum
-from .models import Book, Account, Party, Document, JournalLine, StockValue, ValueMovement
+from .models import Book, Account, Party, Document, JournalLine, StockValue, ValueMovement, CostAssignment
 from .services import day, require, ZERO, outstanding
 
 
@@ -15,6 +15,12 @@ def document_data(d, as_of=None):
         'unallocated': str(d.total - sum((a.amount for a in d.allocations.all()), ZERO)) if d.kind in {'receipt','payment'} else None,
         'reversed': hasattr(d, 'reversal') and (not as_of or d.reversal.date <= as_of), 'reversalOf': d.reversal_of_id, 'notes': d.notes, 'source': d.source,
         'actor': d.actor_id, 'createdAt': d.created_at.isoformat(), 'allocations': allocations,
+        'journal': [{'id': j.pk, 'account': j.account_id, 'accountName': j.account.name, 'cash': j.account.cash,
+                     'customer': j.party_id, 'debit': str(j.debit), 'credit': str(j.credit)}
+                    for j in d.journal.select_related('account')],
+        'costSource': ({'line': d.cost_assignment.source_line_id,
+                        'document': d.cost_assignment.source_line.document.number}
+                       if hasattr(d, 'cost_assignment') else None),
         'items': [{'id': i.pk, 'item': i.item, 'description': i.description, 'quantity': str(i.quantity), 'unit': i.unit, 'price': str(i.price), 'net': str(i.net), 'tax': str(i.tax)} for i in d.items.all()]}
 
 
@@ -26,9 +32,28 @@ def report(start, end, party=None, account_code=None):
     all_lines = JournalLine.objects.select_related('document', 'account', 'party').filter(document__date__lte=end).order_by('document__date', 'document_id', 'id')
     balances = defaultdict(lambda: [ZERO, ZERO, ZERO])
     customer = defaultdict(lambda: [ZERO, ZERO, ZERO])
+    profitability = defaultdict(lambda: [ZERO, ZERO, ZERO])
+    profit_details = []
+    unassigned_income = ZERO; unassigned_cost = ZERO
     ledger = []; running = ZERO; opening = ZERO
     for l in all_lines:
         signed = l.debit - l.credit
+        if l.document.date >= start and l.account.kind in {'income', 'expense'}:
+            # Older sales journals did not tag income lines; their document party
+            # is still canonical evidence. Expense reclassification credits must
+            # remain unassigned even though the command itself has a customer.
+            p = l.party if l.party_id else l.document.party if l.account.kind == 'income' else None
+            if p and p.kind == 'customer':
+                v = profitability[p.pk]
+                if l.account.kind == 'income': v[0] -= signed
+                elif l.account_id == '5100': v[1] += signed
+                else: v[2] += signed
+                profit_details.append({'customerId': p.pk, 'customer': p.name, 'date': str(l.document.date),
+                    'document': l.document_id, 'number': l.document.number, 'account': l.account_id,
+                    'category': l.account.name, 'income': str(-signed if l.account.kind == 'income' else ZERO),
+                    'cost': str(signed if l.account.kind == 'expense' else ZERO)})
+            elif l.account.kind == 'income': unassigned_income -= signed
+            else: unassigned_cost += signed
         b = balances[l.account_id]
         if l.document.date < start:
             b[0] += signed
@@ -85,7 +110,25 @@ def report(start, end, party=None, account_code=None):
         totals=moves.aggregate(qty=Sum('quantity'),value=Sum('value'))
         if totals['qty'] is not None:
             inventory.append({'item':s.item,'unit':s.unit,'quantity':str(totals['qty']),'value':str(totals['value']),'asOf':str(end)})
+    profit_rows = [{'customerId': p.pk, 'customer': p.name, 'income': str(profitability[p.pk][0]),
+                   'costOfSales': str(profitability[p.pk][1]), 'otherCosts': str(profitability[p.pk][2]),
+                   'netProfit': str(profitability[p.pk][0]-profitability[p.pk][1]-profitability[p.pk][2])}
+                  for p in Party.objects.filter(kind='customer').order_by('name', 'pk')]
+    assignable = []
+    for line in JournalLine.objects.filter(account__kind='expense', debit__gt=0, party__isnull=True,
+            document__date__lte=end).exclude(document__kind__in=['assign-cost','reverse']).select_related('document','account').prefetch_related('cost_assignments__document'):
+        if hasattr(line.document,'reversal') and line.document.reversal.date <= end: continue
+        used = sum((a.amount for a in line.cost_assignments.all() if a.document.date <= end and
+                    (not hasattr(a.document,'reversal') or a.document.reversal.date > end)), ZERO)
+        if line.debit > used:
+            assignable.append({'line':line.pk,'document':line.document.number,'date':str(line.document.date),
+                               'account':line.account.name,'remaining':str(line.debit-used)})
+    from .commitments import order_commitments
     return {'start': str(start), 'end': str(end), 'currency': book.currency,
+        'customerProfit': {'rows':profit_rows,'details':profit_details,'unassignedIncome':str(unassigned_income),
+                          'unassignedCosts':str(unassigned_cost),'unassignedNet':str(unassigned_income-unassigned_cost),
+                          'companyNetProfit':str(income-expenses)},
+        'assignableCosts': assignable, 'orderCommitments':order_commitments(end),
         'profitLoss': {'income': str(income), 'expenses': str(expenses), 'netProfit': str(income-expenses),
             'accounts': [r for r in trial if r['kind'] in {'income','expense'}]},
         'balanceSheet': {'assets': str(sheet['asset']), 'liabilities': str(-sheet['liability']), 'equity': str(-sheet['equity']),

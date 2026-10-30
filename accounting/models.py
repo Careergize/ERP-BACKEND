@@ -117,6 +117,16 @@ class Allocation(AppendOnlyRow):
         constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name='accounting_allocation_positive')]
 
 
+class CostAssignment(AppendOnlyRow):
+    """Evidence for a balanced customer expense reclassification."""
+    document = models.OneToOneField(Document, related_name='cost_assignment', on_delete=models.PROTECT)
+    source_line = models.ForeignKey(JournalLine, related_name='cost_assignments', on_delete=models.PROTECT)
+    amount = models.DecimalField(max_digits=24, decimal_places=2)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name='accounting_assignment_positive')]
+
+
 class StockValue(models.Model):
     # Valuation identity includes physical namespace and exact unit.
     item = models.CharField(max_length=120, primary_key=True)
