@@ -6,18 +6,21 @@ from .services import day, require, ZERO, outstanding
 
 
 def document_data(d, as_of=None):
+    dated_allocations = [a for a in d.allocations.select_related('bill', 'item_line')
+                         if not as_of or (a.date or d.date) <= as_of]
     allocations = [{'bill': a.bill_id, 'billNumber': a.bill.number, 'itemLine': a.item_line_id,
                     'amount': str(a.amount), 'items': [a.item_line.description] if a.item_line else list(a.bill.items.values_list('description', flat=True))}
-                   for a in d.allocations.select_related('bill', 'item_line')]
+                   for a in dated_allocations]
     return {'id': d.pk, 'kind': d.kind, 'number': d.number, 'date': str(d.date), 'party': d.party_id,
         'partyName': d.party.name if d.party else '', 'currency': d.currency, 'fx': str(d.fx), 'total': str(d.total),
         'outstanding': str(outstanding(d, as_of)) if d.kind in {'invoice','bill'} else None,
-        'unallocated': str(d.total - sum((a.amount for a in d.allocations.all()), ZERO)) if d.kind in {'receipt','payment'} else None,
+        'unallocated': str(d.total - sum((a.amount for a in dated_allocations), ZERO)) if d.kind in {'receipt','payment'} else None,
         'reversed': hasattr(d, 'reversal') and (not as_of or d.reversal.date <= as_of), 'reversalOf': d.reversal_of_id, 'notes': d.notes, 'source': d.source,
         'actor': d.actor_id, 'createdAt': d.created_at.isoformat(), 'allocations': allocations,
         'journal': [{'id': j.pk, 'account': j.account_id, 'accountName': j.account.name, 'cash': j.account.cash,
-                     'customer': j.party_id, 'debit': str(j.debit), 'credit': str(j.credit)}
-                    for j in d.journal.select_related('account')],
+                     'party': j.party_id, 'partyName': j.party.name if j.party else '',
+                     'debit': str(j.debit), 'credit': str(j.credit)}
+                    for j in d.journal.select_related('account', 'party')],
         'costSource': ({'line': d.cost_assignment.source_line_id,
                         'document': d.cost_assignment.source_line.document.number}
                        if hasattr(d, 'cost_assignment') else None),
@@ -29,7 +32,7 @@ def report(start, end, party=None, account_code=None):
     require(start <= end, 'Start date must be on or before end date.')
     book = Book.objects.first()
     require(book is not None, 'Configure accounting first.')
-    all_lines = JournalLine.objects.select_related('document', 'account', 'party').filter(document__date__lte=end).order_by('document__date', 'document_id', 'id')
+    all_lines = JournalLine.objects.select_related('document__party', 'document__reversal', 'account', 'party').filter(document__date__lte=end).order_by('document__date', 'document_id', 'id')
     balances = defaultdict(lambda: [ZERO, ZERO, ZERO])
     customer = defaultdict(lambda: [ZERO, ZERO, ZERO])
     profitability = defaultdict(lambda: [ZERO, ZERO, ZERO])

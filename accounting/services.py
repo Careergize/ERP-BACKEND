@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from rest_framework.exceptions import ValidationError
 
 from .models import Book, Account, Party, Document, DocumentLine, JournalLine, Allocation, StockValue, ValueMovement, CostAssignment
@@ -213,6 +213,9 @@ def post(payload, user, source=None):
         require(line.document.kind not in {'assign-cost', 'reverse'} and not hasattr(line.document, 'reversal'),
                 'Select an active original expense, not a reclassification or reversal.')
         require(when >= line.document.date, 'Cost assignment cannot precede the source expense.')
+        previous = CostAssignment.objects.filter(source_line=line).select_related('document__reversal')
+        require(all(when >= (a.document.reversal.date if hasattr(a.document, 'reversal') else a.document.date)
+                    for a in previous), 'Assignment must follow all earlier assignments and their reversals for this source.')
         used = CostAssignment.objects.filter(source_line=line, document__reversal__isnull=True).aggregate(n=Sum('amount'))['n'] or ZERO
         doc.total = dec(payload.get('amount'), positive=True)
         require(doc.total <= line.debit-used, 'Assignment exceeds the remaining unassigned source cost.')
@@ -254,7 +257,8 @@ def post(payload, user, source=None):
         original = Document.objects.select_for_update().filter(pk=payload.get('document')).first()
         require(original is not None and original.kind != 'reverse' and not Document.objects.filter(reversal_of=original).exists() and when >= original.date, 'Select an unreversed original document dated on or before reversal.')
         require(not original.settlements.filter(payment__reversal__isnull=True).exists(), 'Reverse allocated payments before reversing an invoice/bill.')
-        require(not CostAssignment.objects.filter(source_line__document=original, document__reversal__isnull=True).exists(),
+        require(not CostAssignment.objects.filter(source_line__document=original).filter(
+                    Q(document__reversal__isnull=True) | Q(document__reversal__date__gt=when)).exists(),
                 'Reverse active customer cost assignments before reversing their source expense.')
         require(original.kind!='allocate', 'Reverse the original payment to undo its allocations.')
         for movement in original.valuations.select_related('stock'):

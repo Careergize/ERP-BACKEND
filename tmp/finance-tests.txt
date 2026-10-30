@@ -1,7 +1,7 @@
 SAFETY: dotenv skipped; DB=:memory:; test DB=:memory:; outbound connect blocked.
 Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
 
-Found 19 test(s).
+Found 26 test(s).
 Operations to perform:
   Synchronize unmigrated apps: corsheaders, messages, rest_framework, staticfiles
   Apply all migrations: accounting, accounts, admin, auth, contenttypes, erp, inventory, quotations, sessions, token_blacklist
@@ -93,13 +93,19 @@ test_advance_can_be_allocated_later_and_reversed_with_fx (accounting.tests.Accou
 test_allocation_bounds_and_wrong_party_roll_back (accounting.tests.AccountingTests.test_allocation_bounds_and_wrong_party_roll_back) ... ok
 test_cancel_before_costing_removes_pending_dispatch_without_posting (accounting.tests.AccountingTests.test_cancel_before_costing_removes_pending_dispatch_without_posting) ... ok
 test_cogs_reversal_returns_original_cost (accounting.tests.AccountingTests.test_cogs_reversal_returns_original_cost) ... ok
+test_cost_assignment_splits_caps_replays_and_preserves_cash (accounting.tests.AccountingTests.test_cost_assignment_splits_caps_replays_and_preserves_cash) ... ok
+test_cost_assignment_validates_customer_date_source_currency_and_permissions (accounting.tests.AccountingTests.test_cost_assignment_validates_customer_date_source_currency_and_permissions) ... ok
+test_customer_profit_uses_actual_costs_fx_and_reconciles_company (accounting.tests.AccountingTests.test_customer_profit_uses_actual_costs_fx_and_reconciles_company) ... ok
+test_dispatch_cost_automatically_uses_canonical_order_customer (accounting.tests.AccountingTests.test_dispatch_cost_automatically_uses_canonical_order_customer) ... ok
 test_dispatch_integration_posts_and_cancels_original_cost_once (accounting.tests.AccountingTests.test_dispatch_integration_posts_and_cancels_original_cost_once) ... ok
 test_fx_gain_and_missing_fx (accounting.tests.AccountingTests.test_fx_gain_and_missing_fx) ... ok
 test_historical_outstanding_and_valuation_are_as_of_end (accounting.tests.AccountingTests.test_historical_outstanding_and_valuation_are_as_of_end) ... ok
 test_journal_evidence_cannot_be_edited_and_led_requires_mapping (accounting.tests.AccountingTests.test_journal_evidence_cannot_be_edited_and_led_requires_mapping) ... ok
 test_opening_and_period_lock (accounting.tests.AccountingTests.test_opening_and_period_lock) ... ok
+test_payment_drilldown_exposes_real_accounts_and_transfer_sides (accounting.tests.AccountingTests.test_payment_drilldown_exposes_real_accounts_and_transfer_sides) ... ok
 test_payment_reversal_restores_outstanding_and_historical_balances (accounting.tests.AccountingTests.test_payment_reversal_restores_outstanding_and_historical_balances) ... ok
 test_permissions_inactive_roles_and_setup_immutability (accounting.tests.AccountingTests.test_permissions_inactive_roles_and_setup_immutability) ... ok
+test_purchase_commitments_follow_partial_bills_and_asof_reversal (accounting.tests.AccountingTests.test_purchase_commitments_follow_partial_bills_and_asof_reversal) ... ok
 test_queue_retains_missing_value_then_posts_exactly_once (accounting.tests.AccountingTests.test_queue_retains_missing_value_then_posts_exactly_once) ... ok
 test_raw_movement_signal_captures_missing_cost (accounting.tests.AccountingTests.test_raw_movement_signal_captures_missing_cost) ... ok
 test_retry_idempotency_and_changed_request_rejected (accounting.tests.AccountingTests.test_retry_idempotency_and_changed_request_rejected) ... ok
@@ -107,10 +113,11 @@ test_sales_receipt_partial_balance_ledgers_and_statements (accounting.tests.Acco
 test_saved_invoice_auto_posting_and_foreign_queue (accounting.tests.AccountingTests.test_saved_invoice_auto_posting_and_foreign_queue) ... ok
 test_supplier_bill_matches_po_partial_and_rejects_overbilling (accounting.tests.AccountingTests.test_supplier_bill_matches_po_partial_and_rejects_overbilling) ... ok
 test_supplier_bill_payment_expense_cash_transfer (accounting.tests.AccountingTests.test_supplier_bill_payment_expense_cash_transfer) ... ok
+test_uninvoiced_sales_partial_future_currency_and_units (accounting.tests.AccountingTests.test_uninvoiced_sales_partial_future_currency_and_units) ... ok
 test_valuation_weighted_average_and_insufficient_stock (accounting.tests.AccountingTests.test_valuation_weighted_average_and_insufficient_stock) ... ok
 
 ----------------------------------------------------------------------
-Ran 19 tests in 0.893s
+Ran 26 tests in 1.568s
 
 OK
 Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
