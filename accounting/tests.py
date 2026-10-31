@@ -647,3 +647,24 @@ class AccountingTests(APITestCase):
         stock.refresh_from_db();self.assertEqual(stock.unit,'kg');self.assertEqual(stock.quantity,100)
         choices={i['id']:i for i in self.client.get('/api/accounting/valuation-items/').data}
         self.assertEqual(choices[stock.item]['valuedUnit'],'kg');self.assertEqual(choices[stock.item]['unit'],'ctn')
+
+    def test_queued_dispatch_accepts_ctn_case_difference_without_relabelling_stock(self):
+        from datetime import date
+        from erp.models import FinishedStockItem
+        from .models import StockValue, PostingEvent
+        from .integration import enqueue
+        FinishedStockItem.objects.create(id='case-cartons',name='Case cartons',category='packing',unit='ctn',opening_stock=100,opening_date=date(2026,1,1))
+        stock=StockValue.objects.create(item='finished:case-cartons',unit='Ctn',quantity=100,value=1000,last_date=date(2026,2,1))
+        payload={'kind':'stock-issue','number':'VAL-CASE-ISSUE','date':'2026-02-01','item':stock.item,'unit':'ctn','quantity':'10','contra':'5100','customer':self.customer}
+        enqueue('dispatch:case-unit',payload,self.admin)
+        event=PostingEvent.objects.get(pk='dispatch:case-unit')
+        self.assertIsNotNone(event.document_id,event.error)
+        stock.refresh_from_db();self.assertEqual(stock.unit,'Ctn');self.assertEqual(stock.quantity,90);self.assertEqual(stock.value,900)
+        self.assertEqual(event.document.journal.get(account_id='5100').debit,100)
+        before=Document.objects.count()
+        enqueue('dispatch:case-unit',payload,self.admin)
+        self.assertEqual(Document.objects.count(),before)
+        r=self.command('stock-receipt',item=stock.item,unit=' cTn ',quantity='1',value='10',contra='3100')
+        self.assertEqual(r.status_code,201,r.data)
+        r=self.command('stock-issue',item=stock.item,unit='kg',quantity='1',contra='5100')
+        self.assertEqual(r.status_code,400,r.data)

@@ -80,15 +80,20 @@ def outstanding(doc, as_of=None):
     return doc.total - allocated
 
 
+def unit_key(unit):
+    # Cosmetic spelling only; never infer carton/piece/weight conversions.
+    return unit.strip().casefold()
+
+
 def stock_move(doc, item, unit, qty, value=None):
     from .valuation_items import catalog_unit
     expected_unit = catalog_unit(item)
-    require(not expected_unit or unit == expected_unit, f'{item}: item unit is {expected_unit}; received {unit}. Select the item to use its automatic unit. No unit conversion is performed.')
+    require(not expected_unit or unit_key(unit) == unit_key(expected_unit), f'{item}: item unit is {expected_unit}; received {unit}. Select the item to use its automatic unit. No unit conversion is performed.')
     stock = StockValue.objects.select_for_update().filter(pk=item).first()
     if not stock:
         require(qty > 0 and value is not None, f'Opening quantity/value required for {item}.')
         stock = StockValue.objects.create(item=item, unit=unit, last_date=doc.date)
-    require(stock.unit == unit, f'{item}: existing accounting valuation uses {stock.unit}, but this movement uses {unit}. Reconcile the earlier valuation; existing quantities cannot be relabeled or converted automatically.')
+    require(unit_key(stock.unit) == unit_key(unit), f'{item}: existing accounting valuation uses {stock.unit}, but this movement uses {unit}. Reconcile the earlier valuation; existing quantities cannot be relabeled or converted automatically.')
     require(doc.date >= stock.last_date, f'{item}: valuation date {doc.date} is before the latest valued movement on {stock.last_date}. Backdated valuation would invalidate later costs. Review the valuation history before correcting it.')
     if qty < 0:
         require(stock.quantity >= -qty, f'Insufficient valued stock: {item}. Set reconciled opening values first.')
