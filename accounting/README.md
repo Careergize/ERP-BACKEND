@@ -194,3 +194,21 @@ Validation: 31 accounting tests plus 24 operational/shared-entry regressions pas
 All accounting API views now verify the installed accounting migration leaf after authentication/role checks. Missing accounting migrations return JSON HTTP 503 with the server-side `python manage.py migrate accounting` action instead of querying absent finance tables. This does not auto-migrate databases or mask unrelated runtime failures. Finance UI errors preserve JSON validation details, identify the request path and HTTP status, and do not display raw HTML pages/query-string secrets.
 
 Read-only diagnosis found all accounting migrations pending in this workspace's configured local SQLite database. The frontend .env targets the separate remote API, so this finding does not establish that remote server's migration state. No local/remote schema migration or deployment was performed. Verified missing-schema response on the configured local DB without writes; 32 accounting tests, frontend build and SSR/error-format checks pass; Django check/drift pass.
+
+
+## Finance customers in Sales — 30 October 2026
+
+Finance → Masters → Ledgers can create a linked ERP customer alongside a new customer ledger (requires customer creation permission). Existing finance-only customer ledgers can link to a selected active ERP customer by ID, or create one. Links preserve the ledger and journal history; conflicting existing links are rejected. Existing ERP customer selection requires customer view permission. Creation retries use a UUID to avoid duplicate customers.
+
+Sales’ customer filter now includes active ERP customers without invoices and offers Refresh customers. Sales Orders and quotation customer choices should be reloaded after linking. Invoice projections normalize `db:` customer IDs to the same stable filter key.
+
+Validation: 35 accounting tests on disposable SQLite, Django check/migration drift, frontend TypeScript/production build and Finance/Sales scripts pass. PostgreSQL concurrency and deployed-server behavior remain unverified. No deployment or operational database changes were performed.
+
+
+## Ledger editing and deletion — 31 October 2026
+
+Finance → Masters → Ledgers has an Admin-only editor for ledger name and compatible group. Ledger code/ID, accounting classification, cash/control behavior and ERP source link cannot be edited here. A linked ledger rename changes its accounting label only; it does not rename the ERP customer/supplier. Name/group changes affect report presentation across periods without rewriting journal rows. Requests include the previously read name/group and reject stale edits.
+
+Admin can delete unused custom general ledgers and unlinked customer/supplier ledgers after confirmation. Protected financial references block deletion even for zero balances. Built-in/control accounts, the configured LED account and ERP-linked parties cannot be deleted. An unresolved posting queue blocks deletion because queued payloads may reference a ledger. No automatic deletion of customer masters, transactions or balances is provided.
+
+Existing POST masters routes accept ledger-update and ledger-delete; both enforce Admin authority. No migration is required. Validation: 38 accounting tests on disposable SQLite, Django checks and migration drift, frontend TypeScript/production build and thirteen-section Finance rendering check. PostgreSQL concurrency, browser interaction and deployed-server behavior remain unverified. No deployment or operational database changes performed.

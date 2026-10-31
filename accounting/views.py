@@ -17,6 +17,7 @@ class Bootstrap(AccountingAPIView):
     def get(self, request):
         access(request.user)
         b = Book.objects.first()
+        from erp.models import Customer
         return Response({'book': {'company':b.company,'currency':b.currency,'startDate':str(b.start_date),'fiscalMonth':b.fiscal_month,'valuation':b.valuation,'ledAccount':b.led_account,'closedThrough':str(b.closed_through) if b.closed_through else ''} if b else None,
             'accounts':list(Account.objects.order_by('code').values('code','name','kind','cash','control','group_id')),
             'parties':list(Party.objects.order_by('name').values('id','name','kind','source','group_id')),
@@ -24,6 +25,8 @@ class Bootstrap(AccountingAPIView):
             'costCategories':list(CostCategory.objects.order_by('name').values('id','name')),
             'currencies':list(Currency.objects.order_by('code').values('code','name','symbol')),
             'voucherTypes':list(VoucherType.objects.order_by('name').values('id','name','base_kind')),
+            'erpCustomers':list(Customer.objects.filter(is_active=True).order_by('name','pk').values('id','name')) if request.user.has_perm('erp.view_customer') else [],
+            'canCreateErpCustomer':request.user.has_perm('erp.add_customer'),
             'canWrite':request.user.is_superuser or request.user.effective_role in {'admin','accounts'},
             'canConfigure':request.user.is_superuser or request.user.effective_role == 'admin'})
 
@@ -53,8 +56,30 @@ class Masters(AccountingAPIView):
         if kind == 'parties':
             require(p.get('kind') in {'customer','supplier'}, 'Select customer or supplier.')
             group = master_group(p, 'asset' if p['kind']=='customer' else 'liability')
-            obj = Party.objects.create(name=text(p.get('name'),200),kind=p['kind'],group=group)
-            return Response({'id':obj.pk})
+            require(type(p.get('createErpCustomer',False)) is bool, 'Choose whether to create an ERP customer.')
+            if p.get('createErpCustomer'):
+                from .customer_links import link_customer
+                require(p['kind']=='customer', 'ERP customer creation is only available for customer ledgers.')
+                # Reuse an accepted creation request instead of making a second
+                # party on network retries. Canonical serializer checks its data.
+                from erp.models import Customer
+                from rest_framework import serializers
+                key=serializers.UUIDField().run_validation(p.get('creationKey'))
+                canonical=Customer.objects.filter(creation_key=key).first()
+                obj=Party.objects.filter(source=f'customer:{canonical.pk}').first() if canonical else None
+                if obj:
+                    require(obj.name==text(p.get('name'),200) and obj.group_id==(group.pk if group else None), 'This customer request was accepted with different ledger details.')
+                else: obj=Party.objects.create(name=text(p.get('name'),200),kind=p['kind'],group=group)
+                link_customer(obj,p,request.user)
+            else: obj = Party.objects.create(name=text(p.get('name'),200),kind=p['kind'],group=group)
+            return Response({'id':obj.pk,'source':obj.source})
+        if kind == 'customer-link':
+            from .customer_links import link_customer
+            require(type(p.get('party')) is int, 'Select an accounting customer ledger.')
+            obj=Party.objects.select_for_update().filter(pk=p['party'],kind='customer').first()
+            require(obj is not None, 'Select a customer ledger.')
+            link_customer(obj,p,request.user)
+            return Response({'id':obj.pk,'source':obj.source})
         if kind == 'accounts':
             access(request.user, admin=True)
             require(p.get('kind') in {'asset','liability','equity','income','expense'}, 'Select an account type.')
@@ -65,6 +90,38 @@ class Masters(AccountingAPIView):
                 raise ValidationError('Account code already exists.')
             return Response({'id':obj.pk})
         access(request.user, admin=True)
+        if kind in {'ledger-update', 'ledger-delete'}:
+            from django.db.models.deletion import ProtectedError
+            model = Account if p.get('ledgerType') == 'account' else Party if p.get('ledgerType') == 'party' else None
+            require(model is not None, 'Select a ledger type.')
+            require((model is Account and isinstance(p.get('ledger'), str)) or
+                    (model is Party and type(p.get('ledger')) is int), 'Select a saved ledger.')
+            allowed = {'ledgerType', 'ledger', 'expectedName', 'expectedGroup', 'name', 'group'} if kind == 'ledger-update' else {'ledgerType', 'ledger', 'expectedName', 'expectedGroup'}
+            require(not set(p) - allowed, 'Ledger identity, classification, cash status and ERP links cannot be changed here.')
+            obj = model.objects.select_for_update().filter(pk=p['ledger']).first()
+            require(obj is not None, 'This ledger no longer exists. Reload the ledger list.')
+            require(p.get('expectedName') == obj.name and 'expectedGroup' in p and p['expectedGroup'] == obj.group_id,
+                    'This ledger changed. Reload before saving or deleting.')
+            if kind == 'ledger-update':
+                expected = obj.kind if model is Account else 'asset' if obj.kind == 'customer' else 'liability'
+                obj.name = text(p.get('name'), 150 if model is Account else 200)
+                obj.group = master_group(p, expected)
+                obj.save(update_fields=['name', 'group'])
+                return Response({'id': obj.pk})
+            require(not PostingEvent.objects.filter(document__isnull=True, cancelled=False).exists(),
+                    'Resolve the posting queue before deleting ledgers; pending transactions may reference them.')
+            if model is Party:
+                require(not obj.source, 'ERP-linked ledgers cannot be deleted. Their customer or supplier identity must be preserved.')
+            else:
+                require(not obj.control and obj.code not in {row[0] for row in ACCOUNTS},
+                        'Built-in and control accounts cannot be deleted.')
+                require(not Book.objects.filter(led_account=obj.code).exists(), 'The configured LED account cannot be deleted.')
+            try:
+                with transaction.atomic():
+                    obj.delete()
+            except ProtectedError:
+                raise ValidationError('This ledger has financial history and cannot be deleted, even when its balance is zero.')
+            return Response({'detail': 'Unused ledger deleted.'})
         if kind == 'group-membership':
             model = Account if p.get('ledgerType')=='account' else Party if p.get('ledgerType')=='party' else None
             require(model is not None, 'Select a ledger type.')

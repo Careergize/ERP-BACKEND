@@ -33,6 +33,7 @@ def shared_saved(key, content, previous, user):
             if r['id'] in old: continue
             order = WorkflowOrder.objects.filter(pk=str(r['orderId']).removeprefix('wf-order-')).first()
             customer = order.data.get('customerId') if order else None
+            customer = str(customer).removeprefix('db:') if customer else None
             party = None
             if customer:
                 party,_ = Party.objects.get_or_create(source='customer:'+str(customer), defaults={'name':r['buyer'],'kind':'customer'})
@@ -56,7 +57,8 @@ def shared_saved(key, content, previous, user):
                 from erp.models import WorkflowOrder, Customer
                 order_key = str(r.get('orderId', '')).removeprefix('wf-order-')
                 order = WorkflowOrder.objects.filter(pk=order_key).first() if order_key.isdigit() else None
-                canonical = Customer.objects.filter(pk=order.data.get('customerId')).first() if order else None
+                customer_key = str(order.data.get('customerId','')).removeprefix('db:') if order else ''
+                canonical = Customer.objects.filter(pk=customer_key).first() if customer_key.isdigit() else None
                 customer = None
                 if canonical:
                     customer, _ = Party.objects.get_or_create(source=f'customer:{canonical.pk}', defaults={'name':canonical.name,'kind':'customer'})

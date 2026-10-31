@@ -461,3 +461,110 @@ class AccountingTests(APITestCase):
             r=self.command('journal',lines=bad_lines);self.assertEqual(r.status_code,400,r.data)
         self.assertEqual(self.command('journal',currency='USD',fx='2',lines=lines).status_code,400)
         self.assertEqual(self.command('journal',lines=[{'account':'1300','debit':'50','party':self.supplier},{'account':'4300','credit':'50'}]).status_code,400)
+
+    def test_finance_customer_can_create_erp_customer_for_sales_orders(self):
+        self.enable_customer_master_permissions()
+        from erp.models import Customer
+        key=str(uuid4())
+        payload={'kind':'customer','name':'Finance-created customer','createErpCustomer':True,'creationKey':key,'customerType':'B2C'}
+        result=self.client.post('/api/accounting/masters/parties/',payload,format='json')
+        self.assertEqual(result.status_code,200,result.data)
+        canonical=Customer.objects.get(creation_key=key)
+        self.assertEqual(canonical.customer_type,'B2C')
+        self.assertEqual(result.data['source'],f'customer:{canonical.pk}')
+        options=self.client.get('/api/production-workflow/order-options/')
+        self.assertEqual(options.status_code,200,options.data)
+        self.assertIn({'id':f'db:{canonical.pk}','name':canonical.name},options.data['customers'])
+        replay=self.client.post('/api/accounting/masters/parties/',payload,format='json')
+        self.assertEqual(replay.status_code,200,replay.data);self.assertEqual(replay.data['id'],result.data['id'])
+        self.assertEqual(Customer.objects.filter(creation_key=key).count(),1)
+
+    def test_existing_finance_customer_links_by_id_without_changing_journals(self):
+        self.enable_customer_master_permissions()
+        from erp.models import Customer
+        from .models import Party
+        self.invoice()
+        before=list(JournalLine.objects.values('id','party_id','account_id','debit','credit'))
+        canonical=Customer.objects.create(name='Same displayed name')
+        result=self.client.post('/api/accounting/masters/customer-link/',{'party':self.customer,'erpCustomer':canonical.pk},format='json')
+        self.assertEqual(result.status_code,200,result.data)
+        self.assertEqual(Party.objects.get(pk=self.customer).source,f'customer:{canonical.pk}')
+        self.assertEqual(before,list(JournalLine.objects.values('id','party_id','account_id','debit','credit')))
+        self.assertEqual(self.client.post('/api/accounting/masters/customer-link/',{'party':self.supplier,'erpCustomer':canonical.pk},format='json').status_code,400)
+        other=self.master('customer','Another customer')
+        self.assertEqual(self.client.post('/api/accounting/masters/customer-link/',{'party':other,'erpCustomer':canonical.pk},format='json').status_code,400)
+        different=Customer.objects.create(name='Different customer')
+        self.assertEqual(self.client.post('/api/accounting/masters/customer-link/',{'party':self.customer,'erpCustomer':different.pk},format='json').status_code,400)
+
+    def test_existing_finance_customer_can_publish_new_customer_with_permissions(self):
+        self.enable_customer_master_permissions()
+        from erp.models import Customer
+        from .models import Party
+        key=str(uuid4())
+        payload={'party':self.customer,'creationKey':key,'customerType':'B2B'}
+        result=self.client.post('/api/accounting/masters/customer-link/',payload,format='json')
+        self.assertEqual(result.status_code,200,result.data)
+        canonical=Customer.objects.get(creation_key=key)
+        self.assertEqual(Party.objects.get(pk=self.customer).source,f'customer:{canonical.pk}')
+        self.client.force_authenticate(self.accounts)
+        from unittest.mock import patch
+        with patch.object(type(self.accounts),'has_perm',return_value=False):
+            result=self.client.post('/api/accounting/masters/parties/',{'name':'Not permitted','kind':'customer','createErpCustomer':True,'creationKey':str(uuid4())},format='json')
+        self.assertEqual(result.status_code,403,result.data)
+        self.assertFalse(Party.objects.filter(name='Not permitted').exists())
+        self.assertFalse(Customer.objects.filter(name='Not permitted').exists())
+
+    def enable_customer_master_permissions(self):
+        from django.contrib.auth.models import Permission
+        self.admin.user_permissions.add(*Permission.objects.filter(content_type__app_label='erp',codename__in=['add_customer','view_customer','view_workfloworder']))
+        self.admin=get_user_model().objects.get(pk=self.admin.pk)
+        self.client.force_authenticate(self.admin)
+
+    def test_ledger_edit_preserves_transactions_and_rejects_stale_or_type_changes(self):
+        from .models import Party, AccountGroup
+        self.invoice()
+        before = list(JournalLine.objects.values())
+        group = AccountGroup.objects.create(name='Customer group', kind='asset')
+        payload = {'ledgerType':'party','ledger':self.customer,'expectedName':'Customer A','expectedGroup':None,'name':'Corrected customer','group':group.pk}
+        response = self.client.post('/api/accounting/masters/ledger-update/',payload,format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(Party.objects.get(pk=self.customer).name,'Corrected customer')
+        self.assertEqual(list(JournalLine.objects.values()),before)
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-update/',payload,format='json').status_code,400)
+        payload.update(expectedName='Corrected customer',expectedGroup=group.pk,kind='supplier')
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-update/',payload,format='json').status_code,400)
+        payload.pop('kind');payload['group']=AccountGroup.objects.create(name='Expense group',kind='expense').pk
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-update/',payload,format='json').status_code,400)
+        self.client.force_authenticate(self.accounts)
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-update/',payload,format='json').status_code,403)
+
+    def test_ledger_delete_protects_history_links_builtin_accounts_and_pending_queue(self):
+        from .models import Party
+        self.invoice()
+        def delete(ledger, name, ledger_type='party'):
+            return self.client.post('/api/accounting/masters/ledger-delete/',{'ledgerType':ledger_type,'ledger':ledger,'expectedName':name,'expectedGroup':None},format='json')
+        self.assertEqual(delete(self.customer,'Customer A').status_code,400)
+        linked=Party.objects.create(name='Linked',kind='customer',source='customer:999')
+        self.assertEqual(delete(linked.pk,linked.name).status_code,400)
+        built_in=Account.objects.get(code='1100')
+        payload={'ledgerType':'account','ledger':built_in.code,'expectedName':built_in.name,'expectedGroup':built_in.group_id}
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-delete/',payload,format='json').status_code,400)
+        pending=PostingEvent.objects.create(source='synthetic-pending-delete',payload={'party':self.supplier},actor=self.admin)
+        self.assertEqual(delete(self.supplier,'Supplier A').status_code,400)
+        pending.cancelled=True;pending.save()
+        self.assertEqual(delete(self.supplier,'Supplier A').status_code,200)
+        self.assertFalse(Party.objects.filter(pk=self.supplier).exists())
+        self.assertEqual(delete(self.supplier,'Supplier A').status_code,400)
+
+    def test_unused_custom_account_can_be_edited_and_deleted_only_by_admin(self):
+        account=Account.objects.create(code='CUSTOM-X',name='Custom expense',kind='expense')
+        payload={'ledgerType':'account','ledger':account.code,'expectedName':account.name,'expectedGroup':None,'name':'Renamed expense','group':None}
+        response=self.client.post('/api/accounting/masters/ledger-update/',payload,format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        account.refresh_from_db();self.assertEqual(account.name,'Renamed expense');self.assertEqual(account.kind,'expense')
+        payload={'ledgerType':'account','ledger':account.code,'expectedName':account.name,'expectedGroup':None}
+        self.client.force_authenticate(self.accounts)
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-delete/',payload,format='json').status_code,403)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post('/api/accounting/masters/ledger-delete/',payload,format='json').status_code,200)
+        self.assertFalse(Account.objects.filter(pk=account.pk).exists())
