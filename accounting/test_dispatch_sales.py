@@ -49,9 +49,12 @@ class DispatchSaleTests(APITestCase):
 
     def test_cash_dispatch_posts_full_allocated_receipt_without_changing_previous_balance(self):
         body=self.prepare('cash')
+        from .services import post
+        post({'commandId':str(uuid4()),'kind':'receipt','number':'PRIOR-ADVANCE','date':self.today,'party':self.party.pk,'currency':'USD','cashAccount':'1100','amount':'10'},self.users['admin'])
+        before=self.balance()
         r=self.put('inventory-ledger',body);self.assertEqual(r.status_code,200,r.data)
-        self.assertEqual(self.balance(),0)
-        invoice=Document.objects.get(kind='invoice');receipt=Document.objects.get(kind='receipt')
+        self.assertEqual(self.balance(),before)
+        invoice=Document.objects.get(kind='invoice');receipt=Document.objects.get(source='dispatch-receipt:'+self.identity)
         self.assertEqual(receipt.allocations.get().bill,invoice)
         self.assertEqual(receipt.total,invoice.total)
         self.assertEqual(SharedEntry.objects.get(pk='invoices').content[0]['dispatchPayment']['receiptId'],receipt.pk)

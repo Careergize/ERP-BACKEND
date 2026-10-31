@@ -118,7 +118,7 @@ def settle_dispatch_sales(content, previous, user):
         invoices.append(invoice)
     version = (entry.version if entry else 0)+1
     if entry:
-        entry.content=invoices;entry.version=version;entry.updated_by=user;entry.save()
+        require(SharedEntry.objects.filter(pk='invoices',version=entry.version).update(content=invoices,version=version,updated_by=user,updated_at=timezone.now()) == 1, 'Invoices changed concurrently. Reload before dispatching.')
     else: entry=SharedEntry.objects.create(key='invoices',content=invoices,version=version,updated_by=user)
     digest = hashlib.sha256(json.dumps(invoices,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
     EntryRevision.objects.create(entry=entry,version=version,command_id=uuid5(NAMESPACE_URL,'dispatch-invoices:'+':'.join(sorted(groups))),content=invoices,content_hash=digest,actor=user)
