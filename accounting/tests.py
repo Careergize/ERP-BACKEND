@@ -607,3 +607,43 @@ class AccountingTests(APITestCase):
         with patch.object(type(self.accounts),'has_perm',side_effect=lambda perm,obj=None:perm=='erp.view_customer'):
             r=self.client.get('/api/customers/ledger-options/')
         self.assertEqual(r.status_code,200,r.data);self.assertFalse(r.data['canLink'])
+
+    def test_valuation_catalog_carries_exact_item_unit_and_rejects_typed_wrong_unit(self):
+        from datetime import date
+        from erp.models import FinishedStockItem
+        from inventory.models import RawMaterial
+        from .models import StockValue
+        product=FinishedStockItem.objects.create(id='valuation-cartons',name='Valuation cartons',category='packing',unit='ctn',opening_stock=100,opening_date=date(2026,1,1))
+        RawMaterial.objects.create(id='valuation-raw',name='Valuation raw',family='Test',category='virgin',unit='kg',opening_stock=10,opening_date=date(2026,1,1))
+        r=self.client.get('/api/accounting/valuation-items/')
+        self.assertEqual(r.status_code,200,r.data)
+        choices={i['id']:i for i in r.data}
+        self.assertEqual(choices['finished:'+product.pk]['unit'],'ctn')
+        self.assertEqual(choices['raw:valuation-raw']['unit'],'kg')
+        r=self.command('stock-receipt',item='finished:'+product.pk,unit='kg',quantity='10',value='100',contra='3100')
+        self.assertEqual(r.status_code,400,r.data);self.assertIn('item unit is ctn',str(r.data))
+        self.assertFalse(StockValue.objects.filter(pk='finished:'+product.pk).exists())
+        r=self.command('stock-receipt',item='finished:'+product.pk,unit='ctn',quantity='10',value='100',contra='3100')
+        self.assertEqual(r.status_code,201,r.data)
+        self.assertEqual(StockValue.objects.get(pk='finished:'+product.pk).unit,'ctn')
+        product.refresh_from_db();self.assertEqual(product.opening_stock,100)
+
+    def test_valuation_date_error_is_separate_from_unit_error(self):
+        r=self.command('stock-receipt',item='valuation-date-test',unit='ctn',quantity='10',value='100',contra='3100',date='2026-02-02')
+        self.assertEqual(r.status_code,201,r.data)
+        r=self.command('stock-issue',item='valuation-date-test',unit='ctn',quantity='1',contra='5100',date='2026-02-01')
+        self.assertEqual(r.status_code,400,r.data)
+        self.assertIn('valuation date 2026-02-01',str(r.data));self.assertIn('2026-02-02',str(r.data))
+        self.assertNotIn('unit must match',str(r.data))
+
+    def test_wrong_historical_valuation_unit_is_not_silently_relabelled(self):
+        from datetime import date
+        from erp.models import FinishedStockItem
+        from .models import StockValue
+        FinishedStockItem.objects.create(id='historic-cartons',name='Historic cartons',category='packing',unit='ctn',opening_stock=100,opening_date=date(2026,1,1))
+        stock=StockValue.objects.create(item='finished:historic-cartons',unit='kg',quantity=100,value=1000,last_date=date(2026,1,1))
+        r=self.command('stock-issue',item=stock.item,unit='ctn',quantity='10',contra='5100')
+        self.assertEqual(r.status_code,400,r.data);self.assertIn('existing accounting valuation uses kg',str(r.data))
+        stock.refresh_from_db();self.assertEqual(stock.unit,'kg');self.assertEqual(stock.quantity,100)
+        choices={i['id']:i for i in self.client.get('/api/accounting/valuation-items/').data}
+        self.assertEqual(choices[stock.item]['valuedUnit'],'kg');self.assertEqual(choices[stock.item]['unit'],'ctn')
