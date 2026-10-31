@@ -756,7 +756,7 @@ class AccountingTests(APITestCase):
         self.invoice()
         expense=self.command('expense',cashAccount='1100',items=[{'description':'Unassigned transport','quantity':'1','price':'100'}])
         line=JournalLine.objects.get(document_id=expense.data['id'],account_id='6100')
-        assigned=self.command('assign-cost',customer=self.customer,sourceLine=line.pk,amount='40')
+        assigned=self.command('assign-cost',customer=self.customer,sourceLine=line.pk,amount='40',notes='Reviewed transport allocation')
         self.assertEqual(assigned.status_code,201,assigned.data)
         company=self.detailed_pl();one=self.detailed_pl(customer=self.customer);two=self.detailed_pl(customer=other)
         self.assertEqual(Decimal(company['totals']['netProfit']),100)

@@ -112,7 +112,7 @@ test_custom_voucher_cost_category_and_currency_posting (accounting.tests.Account
 test_customer_profit_uses_actual_costs_fx_and_reconciles_company (accounting.tests.AccountingTests.test_customer_profit_uses_actual_costs_fx_and_reconciles_company) ... ok
 test_detailed_pl_cash_credit_only_uses_recorded_payment_type (accounting.tests.AccountingTests.test_detailed_pl_cash_credit_only_uses_recorded_payment_type) ... ok
 test_detailed_pl_company_customer_groups_vouchers_and_reconciliation (accounting.tests.AccountingTests.test_detailed_pl_company_customer_groups_vouchers_and_reconciliation) ... ok
-test_detailed_pl_cost_assignments_and_customer_identity_stay_separate (accounting.tests.AccountingTests.test_detailed_pl_cost_assignments_and_customer_identity_stay_separate) ... FAIL
+test_detailed_pl_cost_assignments_and_customer_identity_stay_separate (accounting.tests.AccountingTests.test_detailed_pl_cost_assignments_and_customer_identity_stay_separate) ... ok
 test_detailed_pl_scope_pending_warning_and_classification_permissions (accounting.tests.AccountingTests.test_detailed_pl_scope_pending_warning_and_classification_permissions) ... ok
 test_detailed_pl_supporting_stock_purchase_and_reversals_do_not_double_count (accounting.tests.AccountingTests.test_detailed_pl_supporting_stock_purchase_and_reversals_do_not_double_count) ... ok
 test_dispatch_cost_automatically_uses_canonical_order_customer (accounting.tests.AccountingTests.test_dispatch_cost_automatically_uses_canonical_order_customer) ... ok
@@ -150,20 +150,12 @@ test_valuation_catalog_carries_exact_item_unit_and_rejects_typed_wrong_unit (acc
 test_valuation_date_error_is_separate_from_unit_error (accounting.tests.AccountingTests.test_valuation_date_error_is_separate_from_unit_error) ... ok
 test_valuation_weighted_average_and_insufficient_stock (accounting.tests.AccountingTests.test_valuation_weighted_average_and_insufficient_stock) ... ok
 test_wrong_historical_valuation_unit_is_not_silently_relabelled (accounting.tests.AccountingTests.test_wrong_historical_valuation_unit_is_not_silently_relabelled) ... ok
-
   Applying token_blacklist.0013_alter_blacklistedtoken_options_and_more... OK
 System check identified no issues (0 silenced).
-======================================================================
-FAIL: test_detailed_pl_cost_assignments_and_customer_identity_stay_separate (accounting.tests.AccountingTests.test_detailed_pl_cost_assignments_and_customer_identity_stay_separate)
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "D:\Projects\ERP nvapack\Backend\accounting\tests.py", line 760, in test_detailed_pl_cost_assignments_and_customer_identity_stay_separate
-    self.assertEqual(assigned.status_code,201,assigned.data)
-AssertionError: 400 != 201 : [ErrorDetail(string='Record the reason for assigning this cost.', code='invalid')]
 
 ----------------------------------------------------------------------
-Ran 58 tests in 4.459s
+Ran 58 tests in 4.863s
 
-FAILED (failures=1)
+OK
 Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
 
