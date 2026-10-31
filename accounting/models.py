@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.core.validators import MaxValueValidator
 from django.db.models.functions import Lower
 
 
@@ -58,6 +59,13 @@ class Currency(models.Model):
     code = models.CharField(max_length=3, primary_key=True)
     name = models.CharField(max_length=100)
     symbol = models.CharField(max_length=12, blank=True)
+    decimal_places = models.PositiveSmallIntegerField(default=2, validators=[MaxValueValidator(6)])
+    show_in_millions = models.BooleanField(default=False)
+    suffix_symbol = models.BooleanField(default=False)
+    space_between = models.BooleanField(default=False)
+    decimal_word = models.CharField(max_length=100, blank=True)
+    words_decimal_places = models.PositiveSmallIntegerField(default=2, validators=[MaxValueValidator(6)])
+
 
 
 class VoucherType(models.Model):
@@ -69,6 +77,7 @@ class VoucherType(models.Model):
 
 
 class Account(models.Model):
+    pnl_section = models.CharField(max_length=24, blank=True, default='', choices=[('', 'Unclassified'), ('sales','Sales'), ('cost_of_sales','Cost of goods sold'), ('direct_expense','Direct expenses'), ('indirect_expense','Indirect expenses'), ('other_income','Indirect income')])
     code = models.CharField(max_length=30, primary_key=True)
     name = models.CharField(max_length=150)
     kind = models.CharField(max_length=12, choices=[(v, v) for v in ['asset', 'liability', 'equity', 'income', 'expense']])

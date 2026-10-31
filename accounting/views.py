@@ -19,11 +19,11 @@ class Bootstrap(AccountingAPIView):
         b = Book.objects.first()
         from erp.models import Customer
         return Response({'book': {'company':b.company,'currency':b.currency,'startDate':str(b.start_date),'fiscalMonth':b.fiscal_month,'valuation':b.valuation,'ledAccount':b.led_account,'closedThrough':str(b.closed_through) if b.closed_through else ''} if b else None,
-            'accounts':list(Account.objects.order_by('code').values('code','name','kind','cash','control','group_id')),
+            'accounts':list(Account.objects.order_by('code').values('code','name','kind','cash','control','group_id','pnl_section')),
             'parties':list(Party.objects.order_by('name').values('id','name','kind','source','group_id')),
             'groups':list(AccountGroup.objects.order_by('name').values('id','name','kind','parent_id')),
             'costCategories':list(CostCategory.objects.order_by('name').values('id','name')),
-            'currencies':list(Currency.objects.order_by('code').values('code','name','symbol')),
+            'currencies':list(Currency.objects.order_by('code').values('code','name','symbol','decimal_places','show_in_millions','suffix_symbol','space_between','decimal_word','words_decimal_places')),
             'voucherTypes':list(VoucherType.objects.order_by('name').values('id','name','base_kind')),
             'erpCustomers':list(Customer.objects.filter(is_active=True).order_by('name','pk').values('id','name')) if request.user.has_perm('erp.view_customer') else [],
             'canCreateErpCustomer':request.user.has_perm('erp.add_customer'),
@@ -90,6 +90,16 @@ class Masters(AccountingAPIView):
                 raise ValidationError('Account code already exists.')
             return Response({'id':obj.pk})
         access(request.user, admin=True)
+        if kind == 'pnl-classification':
+            obj=Account.objects.select_for_update().filter(pk=p.get('account'),kind__in=['income','expense']).first()
+            require(obj is not None, 'Select an income or expense ledger.')
+            require('expectedSection' in p and p['expectedSection']==obj.pnl_section, 'The P&L classification changed. Reload before updating.')
+            allowed={'','sales','other_income'} if obj.kind=='income' else {'','cost_of_sales','direct_expense','indirect_expense'}
+            section=p.get('section')
+            require(isinstance(section,str) and section in allowed, 'Choose a P&L section matching the ledger classification.')
+            require(obj.code not in {'4100','5100'} or section=={'4100':'sales','5100':'cost_of_sales'}[obj.code], 'Standard sales and cost-of-goods-sold accounts retain their posting purpose.')
+            obj.pnl_section=section;obj.save(update_fields=['pnl_section'])
+            return Response({'id':obj.pk,'pnl_section':section})
         if kind in {'ledger-update', 'ledger-delete'}:
             from django.db.models.deletion import ProtectedError
             model = Account if p.get('ledgerType') == 'account' else Party if p.get('ledgerType') == 'party' else None
@@ -146,7 +156,19 @@ class Masters(AccountingAPIView):
                 require(isinstance(code,str) and re.fullmatch('[A-Z]{3}',code), 'Use a three-letter uppercase currency code.')
                 symbol = p.get('symbol','')
                 require(isinstance(symbol,str) and len(symbol)<=12, 'Currency symbol must be at most 12 characters.')
-                obj = Currency.objects.create(code=code,name=text(p.get('name'),100),symbol=symbol)
+                display = {}
+                for field in ('decimal_places','words_decimal_places'):
+                    value=p.get(field,2)
+                    require(type(value) is int and 0 <= value <= 6, 'Decimal places must be a whole number between 0 and 6.')
+                    display[field]=value
+                for field in ('show_in_millions','suffix_symbol','space_between'):
+                    value=p.get(field,False)
+                    require(type(value) is bool, 'Currency display flags must be Yes or No.')
+                    display[field]=value
+                word=p.get('decimal_word','')
+                require(isinstance(word,str) and len(word)<=100, 'The decimal amount word must be at most 100 characters.')
+                display['decimal_word']=word.strip()
+                obj = Currency.objects.create(code=code,name=text(p.get('name'),100),symbol=symbol,**display)
             elif kind == 'voucher-types':
                 from .masters import BASE_VOUCHERS
                 require(p.get('baseKind') in BASE_VOUCHERS, 'Choose a supported voucher behaviour.')

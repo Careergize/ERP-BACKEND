@@ -668,3 +668,26 @@ class AccountingTests(APITestCase):
         self.assertEqual(r.status_code,201,r.data)
         r=self.command('stock-issue',item=stock.item,unit='kg',quantity='1',contra='5100')
         self.assertEqual(r.status_code,400,r.data)
+
+    def test_currency_display_fields_roundtrip_and_leave_book_and_journals_unchanged(self):
+        from .models import Currency, Book
+        self.invoice()
+        before=list(JournalLine.objects.values())
+        payload={'code':'USD','name':'US Dollar','symbol':'$','decimal_places':3,'show_in_millions':True,'suffix_symbol':True,'space_between':True,'decimal_word':'cents','words_decimal_places':2}
+        response=self.client.post('/api/accounting/masters/currencies/',payload,format='json')
+        self.assertEqual(response.status_code,201,response.data)
+        row=next(c for c in self.client.get('/api/accounting/setup/').data['currencies'] if c['code']=='USD')
+        for key,value in payload.items():self.assertEqual(row[key],value)
+        self.assertEqual(Book.objects.get().currency,'UGX')
+        self.assertEqual(list(JournalLine.objects.values()),before)
+        defaults=Currency.objects.get(code='UGX')
+        self.assertEqual(defaults.decimal_places,2);self.assertEqual(defaults.words_decimal_places,2)
+        self.assertFalse(defaults.show_in_millions);self.assertFalse(defaults.suffix_symbol)
+
+    def test_currency_display_validation_and_existing_admin_authority(self):
+        invalid=[{'decimal_places':-1},{'decimal_places':7},{'decimal_places':True},{'decimal_places':2.5},{'words_decimal_places':'2'},{'words_decimal_places':7},{'show_in_millions':'yes'},{'suffix_symbol':1},{'space_between':None},{'decimal_word':'x'*101}]
+        for change in invalid:
+            response=self.client.post('/api/accounting/masters/currencies/',{'code':'EUR','name':'Euro',**change},format='json')
+            self.assertEqual(response.status_code,400,(change,response.data))
+        self.client.force_authenticate(self.accounts)
+        self.assertEqual(self.client.post('/api/accounting/masters/currencies/',{'code':'EUR','name':'Euro'},format='json').status_code,403)
