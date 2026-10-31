@@ -58,11 +58,10 @@ def settle_dispatch_sales(content, previous, user):
             identity = str(serializers.UUIDField().run_validation(sale.get('id')))
             groups.setdefault(identity,[]).append(dispatch)
     if not groups: return
+    entry = SharedEntry.objects.select_for_update().filter(pk='invoices').first()
     book = Book.objects.select_for_update().filter(pk=1).first()
     require(book is not None, 'Configure accounting before cash/credit dispatch.')
-    entry = SharedEntry.objects.select_for_update().filter(pk='invoices').first()
     invoices = deepcopy(entry.content) if entry else []
-    previous_invoices = deepcopy(invoices)
     for identity, dispatches in groups.items():
         first = dispatches[0]; sale = first['sale']; payment = sale['payment']
         require(isinstance(payment,dict) and payment.get('kind') in {'cash','credit'}, 'Choose Cash sale or Credit sale.')
@@ -105,7 +104,7 @@ def settle_dispatch_sales(content, previous, user):
             'paymentTerms':'Paid at dispatch' if payment['kind']=='cash' else 'Credit sale',
             'currency':order['currency'],'taxRate':float(rate),'taxMode':mode,'discount':float(discount),'quotationDiscount':float(discount),
             'subtotal':float(subtotal),'tax':float(tax),'led':float(led),'total':float(total),'items':items,
-            'dispatchPayment':{'kind':payment['kind'],'fx':payment.get('fx','1')}}
+            'dispatchPayment':{'kind':payment['kind'],'fx':payment.get('fx')}}
         validate_invoices([*invoices,invoice],invoices,user)
         from .integration import shared_saved
         shared_saved('invoices',[*invoices,invoice],invoices,user)
@@ -113,7 +112,7 @@ def settle_dispatch_sales(content, previous, user):
         require(event.document_id is not None, 'Invoice could not post: '+event.error)
         if payment['kind'] == 'cash':
             receipt = post({'commandId':str(uuid5(NAMESPACE_URL,'dispatch-receipt:'+identity)), 'kind':'receipt',
-                'number':'DR-'+identity,'date':first['date'],'party':party.pk,'currency':order['currency'],'fx':payment.get('fx','1'),
+                'number':'DR-'+identity,'date':first['date'],'party':party.pk,'currency':order['currency'],'fx':payment.get('fx'),
                 'cashAccount':payment.get('cashAccount'),'amount':str(total),'allocations':[{'bill':event.document_id,'amount':str(total)}]},user,source='dispatch-receipt:'+identity)
             invoice['dispatchPayment']['receiptId'] = receipt.pk
         invoices.append(invoice)

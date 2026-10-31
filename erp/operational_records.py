@@ -262,6 +262,7 @@ def validate_ledger(content, previous, user):
             require(not any(key in invoice.get('dispatchIds', []) for invoice in invoices), 'An invoiced dispatch requires a credit-note workflow before reversal.')
             require(any(m.get('dispatchId') == key and m.get('reversalOf') == f'out-{key}' for m in movements.values()), 'A reversal must restore stock atomically.')
             continue
+        require(dispatch.get('sale') is None or isinstance(dispatch['sale'], dict), 'Supply valid dispatch sale details.')
         order, line = order_line(dispatch.get('orderId'), dispatch.get('itemId'))
         require(dispatch.get('status') == 'Confirmed' and dispatch.get('productId') == line.get('itemId') and dispatch.get('unit') == line['unit'], 'Dispatch product/unit must match the saved Sales Order.')
         require(dated(dispatch['date']) >= dated(order['date']) and dispatch.get('destination') and dispatch.get('challan'), 'Dispatch requires a valid date, destination and delivery note.')
