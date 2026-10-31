@@ -22,8 +22,7 @@ class AccountingAPIView(APIView):
         super().initial(request, *args, **kwargs)
         # Check access before disclosing service setup status. Import here avoids
         # a views/base-class cycle and preserves the existing role policy.
-        from .views import access
-        access(request.user)
+        self.check_access(request)
         applied = set(MigrationRecorder.Migration.objects.filter(app='accounting').values_list('name', flat=True))
         if not required_accounting_migrations() <= applied:
             raise AccountingSchemaRequired(
@@ -31,3 +30,7 @@ class AccountingAPIView(APIView):
                 '`python manage.py migrate accounting`, then restart the backend service and retry. '
                 'Use the same environment and database as the running backend.'
             )
+
+    def check_access(self, request):
+        from .views import access
+        access(request.user)

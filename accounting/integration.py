@@ -25,6 +25,9 @@ def enqueue(source, payload, user):
 
 
 def shared_saved(key, content, previous, user):
+    if key == 'inventory-ledger':
+        from .dispatch_sales import settle_dispatch_sales
+        settle_dispatch_sales(content, previous, user)
     if not Book.objects.exists(): return
     old = {r['id']:r for r in previous or []} if isinstance(previous,list) else {}
     if key == 'invoices':
@@ -47,6 +50,8 @@ def shared_saved(key, content, previous, user):
             if led:
                 items.append({'description':'LED levy','quantity':'1','price':'0','sourceNet':'0','tax':str(led),'taxAccount':Book.objects.first().led_account or '2200'})
             payload={'kind':'invoice','number':r['number'],'date':r['date'],'currency':r['currency'],'party':party.pk if party else None,'items':items}
+            if r.get('dispatchPayment'):
+                payload['fx'] = r['dispatchPayment'].get('fx','1')
             if not customer: payload['blocked']='Map this invoice to its canonical customer before posting.'
             if led and not Book.objects.first().led_account: payload['blocked']='LED account mapping must be confirmed before posting this invoice.'
             enqueue('invoice:'+r['id'],payload,user)
