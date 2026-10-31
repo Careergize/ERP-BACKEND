@@ -283,3 +283,12 @@ permissions; no migration required. Five new tests and thirteen recycling
 regressions pass on disposable SQLite; checks/drift pass. PostgreSQL concurrency
 and deployment remain unverified. See
 [scope](../ERP-Navapack-frontend/frontend/docs/labour-jobs.md).
+
+
+## Stock IN role consistency — 31 October 2026
+
+Legacy active superusers with no assigned role and the default receptionist role now resolve to Admin in User.effective_role, matching the pre-existing login/profile display. Explicit assigned roles, including inactive role denial, take precedence. This resolves the reproducible case where the UI offered Admin Stock IN but operational checks saw Receptionist. No database role assignments, ordinary-user permissions or operational role mappings are changed; no migration required.
+
+Operational permission errors now identify the effective role and action. Shared-save state retains HTTP status so a 403 explains permission recovery instead of displaying the 409 conflict instructions. Pending entries remain exportable and are not silently discarded.
+
+Validation: 78 accounts/operational/shared-entry/accounting tests on disposable SQLite, including legacy-superuser Stock IN and assigned-role/inactive-role denial; Django checks/drift; frontend TypeScript/build, shared-save failure/status/export/reload checks and auth checks pass. Deployed account diagnosis and PostgreSQL concurrency remain unverified. No live account or stock records changed.

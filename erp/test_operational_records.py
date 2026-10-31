@@ -183,3 +183,22 @@ class OperationalRecordTests(APITestCase):
         result = self.put('costing-estimates', [estimate]); self.assertEqual(result.status_code, 200, result.data)
         estimate['input']['markupPercent'] = 20
         self.assertEqual(self.put('costing-estimates', [estimate]).status_code, 400)
+
+    def test_legacy_superuser_stock_in_uses_same_admin_role_as_profile(self):
+        from accounts.views import UserSerializer
+        legacy=get_user_model().objects.create_superuser('legacy-stock-admin',password='test-only-password')
+        self.assertIsNone(legacy.assigned_role_id)
+        self.assertEqual(legacy.effective_role,'admin')
+        self.assertEqual(UserSerializer(legacy).data['role'],'admin')
+        self.client.force_authenticate(legacy)
+        body={'movements':[{'id':'legacy-stock-in','productId':self.product.pk,'type':'IN','quantity':1,'unit':'ctn','date':self.today,'batch':'reference-stock','reference':'OPENING-LEGACY'}],'allocations':[],'dispatches':[]}
+        r=self.put('inventory-ledger',body);self.assertEqual(r.status_code,200,r.data)
+        self.assertTrue(SharedEntry.objects.filter(pk='inventory-ledger').exists())
+        legacy.assigned_role=Role.objects.get(code='accounts');legacy.save()
+        self.assertEqual(legacy.effective_role,'accounts')
+        body['movements'].append({**body['movements'][0],'id':'not-authorized-stock-in'})
+        r=self.put('inventory-ledger',body);self.assertEqual(r.status_code,403,r.data)
+        self.assertIn('stock-receipt',str(r.data))
+        self.assertEqual(len(SharedEntry.objects.get(pk='inventory-ledger').content['movements']),1)
+        legacy.assigned_role.is_active=False;legacy.assigned_role.save()
+        self.assertEqual(legacy.effective_role,'')

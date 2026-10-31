@@ -1,7 +1,7 @@
 SAFETY: dotenv skipped; DB=:memory:; test DB=:memory:; outbound connect blocked.
 Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
 
-Found 17 test(s).
+Found 7 test(s).
 Operations to perform:
   Synchronize unmigrated apps: corsheaders, messages, rest_framework, staticfiles
   Apply all migrations: accounting, accounts, admin, auth, contenttypes, erp, inventory, quotations, sessions, token_blacklist
@@ -97,22 +97,12 @@ test_credit_dispatch_posts_invoice_with_approved_rates_and_retries_once (account
 test_foreign_currency_requires_explicit_fx_and_balances_use_reporting_currency (accounting.test_dispatch_sales.DispatchSaleTests.test_foreign_currency_requires_explicit_fx_and_balances_use_reporting_currency) ... ok
 test_invalid_choice_missing_address_and_approval_cannot_dispatch (accounting.test_dispatch_sales.DispatchSaleTests.test_invalid_choice_missing_address_and_approval_cannot_dispatch) ... ok
 test_partial_then_final_dispatch_reconciles_discount_and_prevents_second_invoicing (accounting.test_dispatch_sales.DispatchSaleTests.test_partial_then_final_dispatch_reconciles_discount_and_prevents_second_invoicing) ... ok
-test_costing_approval_freezes_the_server_checked_financial_snapshot (erp.test_operational_records.OperationalRecordTests.test_costing_approval_freezes_the_server_checked_financial_snapshot) ... ok
-test_dispatch_is_saved_across_accounts_and_retry_is_idempotent (erp.test_operational_records.OperationalRecordTests.test_dispatch_is_saved_across_accounts_and_retry_is_idempotent) ... ok
-test_invoice_server_checks_totals_and_prevents_duplicate_dispatch_billing (erp.test_operational_records.OperationalRecordTests.test_invoice_server_checks_totals_and_prevents_duplicate_dispatch_billing) ... ok
-test_manufactured_partial_receipts_cannot_exceed_the_same_authorized_lot (erp.test_operational_records.OperationalRecordTests.test_manufactured_partial_receipts_cannot_exceed_the_same_authorized_lot) ... ok
-test_multi_record_operation_is_atomic_and_bundle_retries_do_not_duplicate (erp.test_operational_records.OperationalRecordTests.test_multi_record_operation_is_atomic_and_bundle_retries_do_not_duplicate) ... ok
-test_qc_draft_submit_independent_review_release_and_reopen_rejection (erp.test_operational_records.OperationalRecordTests.test_qc_draft_submit_independent_review_release_and_reopen_rejection) ... ok
-test_reservation_checks_physical_and_batch_stock_without_movements (erp.test_operational_records.OperationalRecordTests.test_reservation_checks_physical_and_batch_stock_without_movements) ... ok
-test_stock_overdraw_mismatch_and_fake_receipts_are_rejected (erp.test_operational_records.OperationalRecordTests.test_stock_overdraw_mismatch_and_fake_receipts_are_rejected) ... ok
-test_tracking_persists_stage_progress_and_rejects_stale_version_and_scope_changes (erp.test_operational_records.OperationalRecordTests.test_tracking_persists_stage_progress_and_rejects_stale_version_and_scope_changes) ... ok
-test_wrong_role_cannot_submit_production_or_invoices (erp.test_operational_records.OperationalRecordTests.test_wrong_role_cannot_submit_production_or_invoices) ... ok
+  Applying token_blacklist.0013_alter_blacklistedtoken_options_and_more... OK
+System check identified no issues (0 silenced).
 
 ----------------------------------------------------------------------
-Ran 17 tests in 1.301s
+Ran 7 tests in 0.746s
 
 OK
 Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
 
-  Applying token_blacklist.0013_alter_blacklistedtoken_options_and_more... OK
-System check identified no issues (0 silenced).

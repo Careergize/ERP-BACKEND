@@ -27,4 +27,4 @@ def authorize(user, action):
     if getattr(settings, 'NAVAPACK_OPERATIONAL_POLICY', '') != POLICY_VERSION:
         raise PermissionDenied('Operational transition unavailable: approved authority mapping and policy evidence are required.')
     if not user.is_active or user.effective_role not in ROLES.get(action, set()):
-        raise PermissionDenied('Your assigned backend role cannot perform this operational action.')
+        raise PermissionDenied(f'Your assigned backend role ({user.effective_role or "unassigned/inactive"}) cannot perform {action}. Ask an administrator to check your assigned role; retrying without a permission change will not save this entry.')

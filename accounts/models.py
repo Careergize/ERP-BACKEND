@@ -39,4 +39,8 @@ class User(AbstractUser):
     def effective_role(self):
         if self.assigned_role_id:
             return self.assigned_role.code if self.assigned_role.is_active else ''
+        # Keep legacy createsuperuser accounts consistent with the existing
+        # Admin profile shown by login. Explicit assigned roles take precedence.
+        if self.is_superuser and self.is_active and self.role == RoleCode.RECEPTIONIST:
+            return RoleCode.ADMIN
         return self.role

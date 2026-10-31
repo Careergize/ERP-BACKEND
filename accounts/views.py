@@ -15,10 +15,6 @@ class UserSerializer(ModelSerializer):
     role = SerializerMethodField()
 
     def get_role(self, user):
-        # createsuperuser inherited the ordinary user's receptionist default.
-        # Its existing backend privileges already grant administrative access.
-        if user.is_superuser and not user.assigned_role_id and user.role == User.Role.RECEPTIONIST:
-            return User.Role.ADMIN
         return user.effective_role
 
     def get_name(self, user):

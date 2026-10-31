@@ -1,6 +1,6 @@
 from django.db import connection
 from rest_framework import mixins, permissions, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.filters import SearchFilter
 from .models import Customer, Supplier, Product, SalesOrder, JobCard, Unit
@@ -23,6 +23,19 @@ class CustomerViewSet(MasterViewSet):
     serializer_class = CustomerSerializer
     filter_backends = [SearchFilter]
     search_fields = ['name', 'code', 'email', 'phone', 'contact_person']
+
+    @action(detail=False, methods=['get'], url_path='ledger-options')
+    def ledger_options(self, request):
+        # Customer view permission allows only ledger identity here, never balances.
+        from accounting.models import Party
+        from accounting.api import required_accounting_migrations, AccountingSchemaRequired
+        from django.db.migrations.recorder import MigrationRecorder
+        applied = set(MigrationRecorder.Migration.objects.filter(app='accounting').values_list('name', flat=True))
+        if not required_accounting_migrations() <= applied:
+            raise AccountingSchemaRequired('Apply accounting migrations on the backend server to load Finance customer ledgers.')
+        can_link = request.user.has_perm('erp.add_customer') and (request.user.is_superuser or request.user.effective_role in {'admin','accounts'})
+        return Response({'ledgers':list(Party.objects.filter(kind='customer',source__isnull=True).order_by('name','pk').values('id','name')),
+                         'canLink':bool(can_link)})
 
     def get_queryset(self):
         queryset = super().get_queryset()

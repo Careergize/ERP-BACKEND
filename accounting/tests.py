@@ -568,3 +568,42 @@ class AccountingTests(APITestCase):
         self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.post('/api/accounting/masters/ledger-delete/',payload,format='json').status_code,200)
         self.assertFalse(Account.objects.filter(pk=account.pk).exists())
+
+    def test_quotation_choices_expose_finance_only_customer_identity_and_link_exact_ledger(self):
+        from django.contrib.auth.models import Permission
+        from erp.models import Customer
+        from .models import Party
+        self.admin.user_permissions.add(*Permission.objects.filter(content_type__app_label='erp',codename__in=['view_customer','add_customer']))
+        for attr in ('_perm_cache','_user_perm_cache','_group_perm_cache'):
+            if hasattr(self.admin,attr):delattr(self.admin,attr)
+        existing=Customer.objects.create(name='Customer A')
+        linked=Party.objects.create(name='Already linked',kind='customer',source=f'customer:{existing.pk}')
+        count=Customer.objects.count()
+        r=self.client.get('/api/customers/ledger-options/')
+        self.assertEqual(r.status_code,200,r.data);self.assertTrue(r.data['canLink'])
+        self.assertIn({'id':self.customer,'name':'Customer A'},r.data['ledgers'])
+        self.assertNotIn(self.supplier,[row['id'] for row in r.data['ledgers']])
+        self.assertNotIn(linked.pk,[row['id'] for row in r.data['ledgers']])
+        self.assertEqual(Customer.objects.count(),count)
+        key=str(uuid4())
+        r=self.client.post('/api/accounting/masters/customer-link/',{'party':self.customer,'creationKey':key,'customerType':'B2B'},format='json')
+        self.assertEqual(r.status_code,200,r.data)
+        created=Customer.objects.get(creation_key=key)
+        self.assertNotEqual(created.pk,existing.pk)  # Same names do not merge identities.
+        self.assertEqual(Party.objects.get(pk=self.customer).source,f'customer:{created.pk}')
+        self.assertNotIn(self.customer,[row['id'] for row in self.client.get('/api/customers/ledger-options/').data['ledgers']])
+        detail=self.client.get(f'/api/customers/{created.pk}/')
+        self.assertEqual(detail.status_code,200,detail.data);self.assertEqual(detail.data['name'],'Customer A')
+        self.assertEqual(JournalLine.objects.count(),0)
+
+    def test_quotation_ledger_choices_require_customer_view_permission_without_granting_link_rights(self):
+        from django.contrib.auth.models import Permission
+        self.accounts.user_permissions.clear()
+        self.client.force_authenticate(self.accounts)
+        from unittest.mock import patch
+        with patch.object(type(self.accounts),'has_perms',return_value=False):
+            self.assertEqual(self.client.get('/api/customers/ledger-options/').status_code,403)
+        self.accounts.user_permissions.add(Permission.objects.get(content_type__app_label='erp',codename='view_customer'))
+        with patch.object(type(self.accounts),'has_perm',side_effect=lambda perm,obj=None:perm=='erp.view_customer'):
+            r=self.client.get('/api/customers/ledger-options/')
+        self.assertEqual(r.status_code,200,r.data);self.assertFalse(r.data['canLink'])

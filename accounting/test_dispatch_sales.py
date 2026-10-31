@@ -32,6 +32,8 @@ class DispatchSaleTests(APITestCase):
 
     def test_credit_dispatch_posts_invoice_with_approved_rates_and_retries_once(self):
         body=self.prepare();command=str(uuid4())
+        duplicate_customer=Customer.objects.create(name=self.party.name)
+        duplicate_party=Party.objects.create(name=self.party.name,kind='customer',source=f'customer:{duplicate_customer.pk}')
         # Display/browser totals never determine financial posting.
         body['dispatches'][0]['sale']['total']=1
         r=self.put('inventory-ledger',body,command,0);self.assertEqual(r.status_code,200,r.data)
@@ -39,6 +41,8 @@ class DispatchSaleTests(APITestCase):
         self.assertEqual(invoice['total'],4.48)
         self.assertEqual(invoice['discount'],0.2)
         self.assertEqual(self.balance(),Decimal('4.48'))
+        self.assertFalse(JournalLine.objects.filter(party=duplicate_party).exists())
+        self.assertEqual(Document.objects.get(kind='invoice').party_id,self.party.pk)
         self.assertEqual(Document.objects.filter(kind='receipt').count(),0)
         self.assertEqual(self.put('inventory-ledger',body,command,0).status_code,200)
         self.assertEqual(Document.objects.filter(kind='invoice').count(),1)
