@@ -77,7 +77,9 @@ def detailed_profit_loss(start, end, customer=None):
         ledger_rows=[]
         for row in sorted(accounts.values(),key=lambda r:(r['group'],r['code'])):
             if row['section']==key:ledger_rows.append({**row,'amount':str(row['amount'])})
-        sections.append({'key':key,'label':label,'total':str(totals[key]),'accounts':ledger_rows})
+        group_totals=defaultdict(lambda:ZERO)
+        for row in ledger_rows:group_totals[row['group']]+=Decimal(row['amount'])
+        sections.append({'key':key,'label':label,'total':str(totals[key]),'accounts':ledger_rows,'groups':[{'name':name,'total':str(value)} for name,value in group_totals.items()]})
     gross=totals['sales']-totals['cost_of_sales']-totals['direct_expense']
     income=totals['sales']+totals['other_income']+totals['unclassified_income']
     expenses=totals['cost_of_sales']+totals['direct_expense']+totals['indirect_expense']+totals['unclassified_expense']
@@ -99,7 +101,7 @@ def detailed_profit_loss(start, end, customer=None):
     return {'company':book.company,'currency':book.currency,'start':str(start),'end':str(end),
         'customer':{'id':selected.pk,'name':selected.name} if selected else None,'sections':sections,
         'salesBreakdown':[{'kind':key,'label':label,'amount':str(split[key])} for key,label in [('cash','Cash sales'),('credit','Credit sales'),('unclassified','Sales without recorded cash/credit type')]],
-        'totals':{'income':str(income),'expenses':str(expenses),'grossProfit':str(gross),'netProfit':str(income-expenses)},
+        'totals':{'income':str(income),'expenses':str(expenses),'grossProfit':str(gross),'netProfit':str(income-expenses),'tradingTotal':str(totals['cost_of_sales']+totals['direct_expense']+max(gross,ZERO)),'operatingTotal':str(totals['indirect_expense']+totals['unclassified_expense']+max(-gross,ZERO)+max(income-expenses,ZERO))},
         'companyUnassigned':{'income':str(unassigned_income),'expenses':str(unassigned_expense)},
         'stock':stock,'purchases':purchases,'warnings':warnings,'pendingEvents':pending,
         'basis':'Posted journals in reporting currency, inclusive of dated reversals and customer cost assignments. Perpetual inventory: cost of goods sold is already expensed; stock and purchase schedules are supporting information only.'}

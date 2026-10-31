@@ -91,6 +91,7 @@ class Masters(AccountingAPIView):
             return Response({'id':obj.pk})
         access(request.user, admin=True)
         if kind == 'pnl-classification':
+            require(isinstance(p.get('account'),str), 'Select a saved ledger code.')
             obj=Account.objects.select_for_update().filter(pk=p.get('account'),kind__in=['income','expense']).first()
             require(obj is not None, 'Select an income or expense ledger.')
             require('expectedSection' in p and p['expectedSection']==obj.pnl_section, 'The P&L classification changed. Reload before updating.')

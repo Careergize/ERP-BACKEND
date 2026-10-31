@@ -691,3 +691,95 @@ class AccountingTests(APITestCase):
             self.assertEqual(response.status_code,400,(change,response.data))
         self.client.force_authenticate(self.accounts)
         self.assertEqual(self.client.post('/api/accounting/masters/currencies/',{'code':'EUR','name':'Euro'},format='json').status_code,403)
+
+    def detailed_pl(self,**params):
+        r=self.client.get('/api/accounting/detailed-profit-loss/',{'start':'2026-02-01','end':'2026-02-28',**params})
+        self.assertEqual(r.status_code,200,r.data)
+        return r.data
+
+    def test_detailed_pl_company_customer_groups_vouchers_and_reconciliation(self):
+        from .models import AccountGroup
+        group=AccountGroup.objects.create(name='Operating overheads',kind='expense')
+        Account.objects.create(code='6200',name='Delivery expense',kind='expense',group=group,pnl_section='direct_expense')
+        Account.objects.create(code='6300',name='Office expense',kind='expense',group=group,pnl_section='indirect_expense')
+        self.invoice(currency='USD',fx='2')  # 400 reporting-currency income, 40 tax excluded from P&L.
+        self.command('stock-receipt',item='finished:pl-test',unit='ctn',quantity='10',value='100',contra='3100')
+        self.command('stock-issue',item='finished:pl-test',unit='ctn',quantity='5',customer=self.customer)
+        self.command('expense',cashAccount='1100',customer=self.customer,items=[{'description':'Delivery','quantity':'1','price':'20','account':'6200'}])
+        self.command('expense',cashAccount='1100',items=[{'description':'Office','quantity':'1','price':'30','account':'6300'}])
+        before=list(JournalLine.objects.values())
+        data=self.detailed_pl()
+        self.assertEqual(Decimal(data['totals']['grossProfit']),330)
+        self.assertEqual(Decimal(data['totals']['netProfit']),300)
+        self.assertEqual(Decimal(data['totals']['netProfit']),Decimal(self.report()['profitLoss']['netProfit']))
+        direct=next(s for s in data['sections'] if s['key']=='direct_expense')
+        self.assertEqual(direct['accounts'][0]['group'],'Operating overheads')
+        self.assertEqual(direct['accounts'][0]['entries'][0]['customerId'],self.customer)
+        scoped=self.detailed_pl(customer=self.customer)
+        self.assertEqual(Decimal(scoped['totals']['netProfit']),330)
+        previous=next(row for row in self.report()['customerProfit']['rows'] if row['customerId']==self.customer)
+        self.assertEqual(Decimal(previous['netProfit']),Decimal(scoped['totals']['netProfit']))
+        self.assertIsNone(scoped['stock']);self.assertIsNone(scoped['purchases'])
+        self.assertEqual(Decimal(scoped['companyUnassigned']['expenses']),30)
+        self.assertEqual(before,list(JournalLine.objects.values()))
+
+    def test_detailed_pl_supporting_stock_purchase_and_reversals_do_not_double_count(self):
+        self.command('stock-receipt',item='finished:pl-opening',unit='ctn',quantity='100',value='1000',contra='3100',date='2026-01-01')
+        self.invoice()
+        self.command('stock-issue',item='finished:pl-opening',unit='ctn',quantity='10',customer=self.customer)
+        bill=self.invoice('bill') # expense ledger 6100: 200 expense, 20 recoverable tax.
+        data=self.detailed_pl()
+        self.assertEqual(Decimal(data['stock']['openingValue']),1000)
+        self.assertEqual(Decimal(data['stock']['closingValue']),900)
+        self.assertEqual(Decimal(data['purchases']['total']),200)
+        self.assertEqual(Decimal(data['totals']['netProfit']),-100) # 200 sales - 100 COGS - 200 expense.
+        self.command('reverse',document=bill.data['id'],notes='Synthetic reversal',date='2026-02-02')
+        data=self.detailed_pl()
+        self.assertEqual(Decimal(data['purchases']['total']),0)
+        self.assertEqual(Decimal(data['totals']['netProfit']),100)
+        self.assertEqual(Decimal(data['totals']['netProfit']),Decimal(self.report()['profitLoss']['netProfit']))
+
+    def test_detailed_pl_cash_credit_only_uses_recorded_payment_type(self):
+        from erp.models import SharedEntry
+        from .services import post
+        snapshots=[]
+        for label,payment in [('cash','cash'),('credit','credit'),('legacy',None)]:
+            identity='pl-'+label
+            snapshots.append({'id':identity,**({'dispatchPayment':{'kind':payment}} if payment else {})})
+            post({'commandId':str(uuid4()),'kind':'invoice','number':'PL-'+label,'date':'2026-02-01','party':self.customer,'currency':'UGX','items':[{'description':'Sale','quantity':'1','price':'100'}]},self.admin,source='invoice:'+identity)
+        SharedEntry.objects.create(key='invoices',content=snapshots,updated_by=self.admin)
+        split={row['kind']:Decimal(row['amount']) for row in self.detailed_pl()['salesBreakdown']}
+        self.assertEqual(split,{'cash':100,'credit':100,'unclassified':100})
+
+    def test_detailed_pl_cost_assignments_and_customer_identity_stay_separate(self):
+        other=self.master('customer','Customer A')
+        self.invoice()
+        expense=self.command('expense',cashAccount='1100',items=[{'description':'Unassigned transport','quantity':'1','price':'100'}])
+        line=JournalLine.objects.get(document_id=expense.data['id'],account_id='6100')
+        assigned=self.command('assign-cost',customer=self.customer,sourceLine=line.pk,amount='40')
+        self.assertEqual(assigned.status_code,201,assigned.data)
+        company=self.detailed_pl();one=self.detailed_pl(customer=self.customer);two=self.detailed_pl(customer=other)
+        self.assertEqual(Decimal(company['totals']['netProfit']),100)
+        self.assertEqual(Decimal(one['totals']['netProfit']),160)
+        self.assertEqual(Decimal(two['totals']['netProfit']),0)
+        self.assertEqual(Decimal(one['companyUnassigned']['expenses']),60)
+
+    def test_detailed_pl_scope_pending_warning_and_classification_permissions(self):
+        from .models import PostingEvent
+        self.invoice()
+        PostingEvent.objects.create(source='pl-missing-cost',payload={'date':'2026-02-01'},actor=self.admin,error='Missing cost')
+        data=self.detailed_pl()
+        self.assertEqual(len(data['pendingEvents']),1)
+        self.assertTrue(any('await posting' in w for w in data['warnings']))
+        for customer in [self.supplier,'bad','999999']:
+            r=self.client.get('/api/accounting/detailed-profit-loss/',{'start':'2026-02-01','end':'2026-02-28','customer':customer})
+            self.assertEqual(r.status_code,400,r.data)
+        payload={'account':'6100','expectedSection':'','section':'indirect_expense'}
+        r=self.client.post('/api/accounting/masters/pnl-classification/',payload,format='json')
+        self.assertEqual(r.status_code,200,r.data)
+        self.assertEqual(Account.objects.get(pk='6100').pnl_section,'indirect_expense')
+        self.assertEqual(self.client.post('/api/accounting/masters/pnl-classification/',payload,format='json').status_code,400)
+        invalid={'account':'6100','expectedSection':'indirect_expense','section':'sales'}
+        self.assertEqual(self.client.post('/api/accounting/masters/pnl-classification/',invalid,format='json').status_code,400)
+        self.client.force_authenticate(self.accounts)
+        self.assertEqual(self.client.post('/api/accounting/masters/pnl-classification/',payload,format='json').status_code,403)
