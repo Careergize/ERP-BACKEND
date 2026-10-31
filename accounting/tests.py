@@ -783,3 +783,40 @@ class AccountingTests(APITestCase):
         self.assertEqual(self.client.post('/api/accounting/masters/pnl-classification/',invalid,format='json').status_code,400)
         self.client.force_authenticate(self.accounts)
         self.assertEqual(self.client.post('/api/accounting/masters/pnl-classification/',payload,format='json').status_code,403)
+
+    def test_voucher_pdf_download_is_read_only_and_uses_safe_attachment_name(self):
+        invoice=self.invoice();before=Document.objects.count();journal_before=list(JournalLine.objects.values())
+        response=self.client.get(f"/api/accounting/vouchers/{invoice.data['id']}/pdf/",{'asOf':'2026-02-01'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response['Content-Type'],'application/pdf')
+        self.assertIn('attachment; filename=',response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF-'));self.assertGreater(len(response.content),1000)
+        self.assertEqual(response['Cache-Control'],'private, no-store')
+        self.assertEqual(Document.objects.count(),before);self.assertEqual(list(JournalLine.objects.values()),journal_before)
+
+    def test_voucher_pdf_respects_asof_allocations_and_reversal_status(self):
+        from unittest.mock import patch
+        invoice=self.invoice()
+        self.command('receipt',party=self.customer,amount='70',cashAccount='1100',allocations=[{'bill':invoice.data['id'],'amount':'70'}],date='2026-02-02')
+        with patch('accounting.voucher_pdf.voucher_pdf',return_value=b'%PDF-test') as render:
+            r=self.client.get(f"/api/accounting/vouchers/{invoice.data['id']}/pdf/",{'asOf':'2026-02-01'})
+            self.assertEqual(r.status_code,200);self.assertEqual(Decimal(render.call_args.args[0]['outstanding']),220)
+            r=self.client.get(f"/api/accounting/vouchers/{invoice.data['id']}/pdf/",{'asOf':'2026-02-02'})
+            self.assertEqual(r.status_code,200);self.assertEqual(Decimal(render.call_args.args[0]['outstanding']),150)
+        second=self.invoice();self.command('reverse',document=second.data['id'],notes='Test reversal',date='2026-02-02')
+        with patch('accounting.voucher_pdf.voucher_pdf',return_value=b'%PDF-test') as render:
+            self.client.get(f"/api/accounting/vouchers/{second.data['id']}/pdf/",{'asOf':'2026-02-01'})
+            self.assertFalse(render.call_args.args[0]['reversed'])
+            self.client.get(f"/api/accounting/vouchers/{second.data['id']}/pdf/",{'asOf':'2026-02-02'})
+            self.assertTrue(render.call_args.args[0]['reversed'])
+
+    def test_voucher_pdf_enforces_existing_finance_read_access_and_not_found(self):
+        from django.contrib.auth import get_user_model
+        invoice=self.invoice()
+        self.assertEqual(self.client.get('/api/accounting/vouchers/999999/pdf/').status_code,404)
+        self.assertEqual(self.client.get(f"/api/accounting/vouchers/{invoice.data['id']}/pdf/",{'asOf':'2026-01-01'}).status_code,400)
+        store=get_user_model().objects.create_user('voucher-store',role='store_keeper',assigned_role=Role.objects.get(code='store_keeper'))
+        self.client.force_authenticate(store)
+        self.assertEqual(self.client.get(f"/api/accounting/vouchers/{invoice.data['id']}/pdf/").status_code,403)
+        self.client.force_authenticate(None)
+        self.assertIn(self.client.get(f"/api/accounting/vouchers/{invoice.data['id']}/pdf/").status_code,[401,403])
