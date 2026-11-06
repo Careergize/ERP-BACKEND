@@ -1,0 +1,46 @@
+{
+  "date": "2026-11-06",
+  "scope": "Three-repository source preparation; no commits, pushes, merges, deployments or shared DB migrations.",
+  "checks": {
+    "typescript_and_operational_build": "PASS",
+    "static_demo_build": "PASS",
+    "frontend_non_browser_checks": 23,
+    "frontend_non_browser_passed": 23,
+    "browser_checks": [
+      "Preview all 22 routes and production/flag-off denial PASS",
+      "Gateway fixture browser PASS",
+      "Dispatch fixture browser PASS",
+      "Static demo 22 routes desktop/mobile, no APIs/external requests PASS"
+    ],
+    "backend_tests": 386,
+    "backend_passed": 386,
+    "isolated_backend_tests": 42,
+    "isolated_backend_passed": 42,
+    "fixture_tests": 8,
+    "fixture_passed": 8,
+    "isolated_frontend_lockfile_install": "PASS (network required after offline cache miss)",
+    "isolated_frontend_builds": "operational and static demo PASS",
+    "isolated_frontend_checks": "23/23 PASS without sibling repositories",
+    "cross_repository_hash_assertions": 559,
+    "cross_repository_script_parity": "PASS",
+    "vendored_upstream_files": 159,
+    "compose_configuration": "PASS original and independent source copy; config --quiet only",
+    "migration_drift": "PASS; no changes"
+  },
+  "security": {
+    "new_gateway_gates": "disabled",
+    "financial_actions": "disabled",
+    "operational_production_preview": "restricted unchanged",
+    "staged_changes": "8 frontend and 145 backend generated-artifact deletions only; disk files preserved",
+    "credential_scan": "No operator credential found; one public EXAMPLE key in pinned upstream local S3 test fixture reviewed",
+    "hosting_authentication": "Required before demo deployment; not configured or deployed",
+    "history": "No Git history rewrite performed"
+  },
+  "remaining": [
+    "Hosting/project protection and deployment require separate approval",
+    "Third repository root is prepared source; Git init/remote setup and commits are pending review",
+    "Operational bundle still exceeds 500 kB warning threshold",
+    "Native image/runtime integration and hermetic package locking not validated; no runtime resources touched",
+    "Database-level audit immutability, retention, native permissions/secret provider and explicit migration/cutover approvals remain prerequisites"
+  ]
+}

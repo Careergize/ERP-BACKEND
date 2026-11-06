@@ -1,2 +1,0 @@
-SAFETY: dotenv skipped; DB=:memory:; test DB=:memory:; outbound connect blocked.
-System check identified no issues (0 silenced).

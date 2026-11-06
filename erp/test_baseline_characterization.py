@@ -23,6 +23,8 @@ class WorkflowBaselineTests(TestCase):
         workflow_fixtures.ProductionWorkflowTests.setUp(self)
         self.initial_movements = list(RawMovement.objects.values())
 
+    prepare_quote = workflow_fixtures.ProductionWorkflowTests.prepare_quote
+    approve_order = workflow_fixtures.ProductionWorkflowTests.approve_order
     create_order = workflow_fixtures.ProductionWorkflowTests.create_order
     action = workflow_fixtures.ProductionWorkflowTests.action
 
@@ -108,8 +110,17 @@ class WorkflowBaselineTests(TestCase):
 
     @tag('unsafe_characterization')
     def test_unsafe_current_draft_allocation_and_same_corrector_approval(self):
-        order, job = self.create_order()
-        self.assertEqual(order['status'], 'Draft', 'G04 observation, not approved future behavior')
+        # create_order now includes approved-order setup. Exercise the actual
+        # draft boundary explicitly rather than expecting its approved result
+        # to retain the historical Draft status.
+        self.prepare_quote(self.body)
+        created = self.client.post('/api/production-workflow/orders/', self.body, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['status'], 'Draft')
+        self.assertFalse(WorkflowJob.objects.exists(), 'Draft demand must not allocate a job.')
+        order = self.approve_order(created.data)
+        self.assertEqual(order['status'], 'Approved')
+        job = self.client.get('/api/production-workflow/jobs/').data[0]
         child = job['manufacturingItems'][0]
         changed = self.action(job, 'edit', 'production_manager', itemId=child['id'], change={'specifications': 'Same PM correction'})
         self.assertEqual(changed.status_code, 200)
@@ -118,13 +129,17 @@ class WorkflowBaselineTests(TestCase):
 
     @tag('unsafe_characterization')
     def test_quote_lineage_is_preserved_in_entry_and_top_level_order_fields(self):
-        self.body.update(quotationId='synthetic-quote-root', quotationRevisionId='synthetic-quote-revision',
-                         quotationNumber='QT-BASELINE', quotationRevision=1)
+        # A verified quotation fixture replaces fabricated IDs. Assert every
+        # saved lineage field against the authoritative generated quotation.
+        self.prepare_quote(self.body)
+        expected = {key: self.body[key] for key in
+                    ('quotationId', 'quotationRevisionId', 'quotationNumber', 'quotationRevision')}
         order, _ = self.create_order()
-        self.assertEqual(order['entryRequest']['quotationId'], 'synthetic-quote-root')
+        self.assertEqual(order['entryRequest']['quotationId'], expected['quotationId'])
         # Main persists lineage for conversion lookup; preserve it alongside Task 03A.
         for key in ('quotationId', 'quotationRevisionId', 'quotationNumber', 'quotationRevision'):
-            self.assertEqual(order[key], self.body[key])
+            self.assertEqual(order[key], expected[key])
+            self.assertEqual(order['entryRequest'][key], expected[key])
         self.assertEqual(WorkflowOrder.objects.get().data, order)
 
     @tag('unsafe_characterization')

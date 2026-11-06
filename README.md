@@ -1,5 +1,30 @@
 # Navapack ERP backend
 
+## Repository boundaries and disabled Finance foundation
+
+This repository owns Django accounting, FinanceEntitlement and finance_gateway.
+[Navapack-Finance](https://github.com/Careergize/Navapack-Finance) separately owns
+native Frappe app/Docker source; React UI/demo belongs to ERP-FRONTEND. No sibling
+checkout is needed for backend unit tests. The approved six-model foundation and
+GET /api/finance/v1/access/ are disabled by default and expose no financial writes.
+No shared database migrations have been applied. See
+[independent validation](docs/finance/REPOSITORY-VALIDATION.md) and
+[foundation review](docs/finance/PHASE-2-FOUNDATION.md). Older SSO notes below are
+historical; the target architecture remains React -> Django -> Frappe with no
+client-facing ERPNext login or financial activation.
+
+## ERPNext Finance status gateway — 6 November 2026
+
+Added read-only `GET /api/finance/status/`, requiring existing JWT, explicit FinanceEntitlement and `accounts.view_financeentitlement`. Empty server-only FINANCE_FRAPPE_* settings disable upstream calls. Status always reports `available: false`; existing application/launch APIs and accounting remain unchanged. No new permission/migration or grant. See [contract](docs/finance/FINANCE_API_CONTRACT.md) and [test report](docs/finance/FINANCE_TEST_REPORT.md).
+
+## Common-login prerequisites — 5 November 2026
+
+Explicit Finance eligibility and fail-closed application/launch endpoints are implemented.
+ERPNext/Frappe and secure per-user SSO are unavailable in the inspected target, so Finance
+launch remains disabled. No grants were seeded and the new accounts migration has not
+been applied to the operational database. See the [implementation report](docs/finance/COMMON-LOGIN-IMPLEMENTATION.md)
+for scope, tests, blockers and deployment requirements. Existing login and accounting remain unchanged.
+
 ## Finance and accounting — 27 October 2026
 
 Added the `accounting` app and `/api/accounting/` APIs, integrated source posting

@@ -1,1 +1,0 @@
-Passed: raw IN/OUT, immutable source balances, unknown openings, monthly carry-forward, consumable categories/units and independent signed ledgers.

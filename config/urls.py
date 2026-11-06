@@ -3,6 +3,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView, TokenBlacklistView
 from accounts.views import LoginView, MeView
+from accounts.applications import ApplicationsView, FinanceLaunchView
 from accounts.management_api import RoleViewSet, ManagedUserViewSet
 from erp.views import CustomerViewSet, SupplierViewSet, ProductViewSet, SalesOrderViewSet, JobCardViewSet, UnitViewSet, health
 from quotations.views import QuotationViewSet
@@ -39,6 +40,7 @@ router.register('users', ManagedUserViewSet)
 from erp.job_drafts import JobDraftAPI, JobDraftDetail, JobDraftHistory
 
 urlpatterns = [
+    path('api/finance/', include('finance_gateway.urls')),
     path('api/sales/', include('erp.sales_urls')),
     path('api/accounting/', include('accounting.urls')),
     path('api/recycling/inhouse-waste/report/', InhouseWasteReport.as_view()),
@@ -74,5 +76,7 @@ urlpatterns = [
     path('api/auth/refresh/', TokenRefreshView.as_view()),
     path('api/auth/logout/', TokenBlacklistView.as_view()),
     path('api/auth/me/', MeView.as_view()),
+    path('api/auth/applications/', ApplicationsView.as_view()),
+    path('api/auth/finance/launch/', FinanceLaunchView.as_view()),
     path('api/', include(router.urls)),
 ]

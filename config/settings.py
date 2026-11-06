@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'quotations',
     'inventory',
     'accounting.apps.AccountingConfig',
+    'finance_gateway.apps.FinanceGatewayConfig',
 ]
 
 MIDDLEWARE = [
@@ -176,6 +177,19 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 }
+
+
+# Optional server-side read-only ERPNext diagnostics. This cannot enable Finance.
+FINANCE_FRAPPE_URL = os.getenv('FINANCE_FRAPPE_URL', '')
+FINANCE_FRAPPE_IDENTITY = os.getenv('FINANCE_FRAPPE_IDENTITY', '')
+FINANCE_FRAPPE_API_KEY = os.getenv('FINANCE_FRAPPE_API_KEY', '')
+FINANCE_FRAPPE_API_SECRET = os.getenv('FINANCE_FRAPPE_API_SECRET', '')
+
+# New integration is inert until separately configured and approved. No secrets
+# or destinations are inferred from the legacy diagnostic configuration.
+FINANCE_GATEWAY_ACCESS_ENABLED = False
+FINANCE_GATEWAY_READS_ENABLED = False
+FINANCE_GATEWAY_DESTINATIONS = {}
 
 
 # Quotation documents

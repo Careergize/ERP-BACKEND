@@ -44,3 +44,16 @@ class User(AbstractUser):
         if self.is_superuser and self.is_active and self.role == RoleCode.RECEPTIONIST:
             return RoleCode.ADMIN
         return self.role
+
+
+class FinanceEntitlement(models.Model):
+    """Explicit local eligibility only; never substitutes for Frappe permissions.
+
+    No grants are seeded from roles, staff status or superuser status. Mapping an
+    identity does not prove that it exists or is enabled in the target site.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='finance_entitlement')
+    frappe_user = models.CharField(max_length=140)
+    enabled = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
