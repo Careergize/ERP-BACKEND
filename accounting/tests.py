@@ -10,6 +10,23 @@ from .integration import enqueue, shared_saved
 
 
 class AccountingTests(APITestCase):
+    def test_delete_one_expense_voucher(self):
+        def expense(number, price):
+            response = self.client.post('/api/accounting/commands/', {
+                'commandId': str(uuid4()), 'kind': 'expense', 'number': number,
+                'date': '2026-02-01', 'cashAccount': '1100',
+                'items': [{'description': 'Electricity', 'quantity': '1', 'price': price}],
+            }, format='json')
+            self.assertEqual(response.status_code, 201, response.data)
+            return response.data['id']
+
+        target = expense('ELEC-1', '500')
+        remaining = expense('ELEC-2', '1000')
+        response = self.client.delete(f'/api/accounting/vouchers/{target}/')
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Document.objects.filter(pk=target).exists())
+        self.assertTrue(Document.objects.get(pk=remaining).journal.exists())
+
     def setUp(self):
         cache.clear()
         self.admin=get_user_model().objects.create_user('finance-admin',role='admin',assigned_role=Role.objects.get(code='admin'))
@@ -50,6 +67,119 @@ class AccountingTests(APITestCase):
         row=next(d for d in r['documents'] if d['kind']=='invoice')
         self.assertEqual(row['outstanding'],'150.00')
         self.assertEqual(receipt.data['allocations'][0]['items'],['Test item'])
+
+    def test_receipt_modes_keep_unapplied_references_and_settle_open_invoices(self):
+        old = self.invoice(date='2026-01-10')
+        future = self.invoice(date='2026-03-01')
+        self.invoice(date='2026-01-12', currency='USD', fx='2')
+        params = {'customer':self.customer,'date':'2026-02-01','currency':'UGX'}
+        path = '/api/accounting/receipt-invoices/'
+        options = self.client.get(path, params)
+        self.assertEqual(options.status_code, 200, options.data)
+        self.assertEqual([row['id'] for row in options.data], [old.data['id']])
+        self.assertEqual(Decimal(options.data[0]['outstanding']), 220)
+        self.assertNotEqual(old.data['id'], future.data['id'])
+
+        receipt = {'party':self.customer,'amount':'50','cashAccount':'1100'}
+        for mode, label in [('advance','Advance'), ('new-ref','New Ref'), ('on-account','On Account')]:
+            saved = self.command('receipt', receiptMode=mode, **receipt)
+            self.assertEqual(saved.status_code, 201, saved.data)
+            self.assertEqual(saved.data['receiptMode'], label)
+            self.assertEqual(Decimal(saved.data['unallocated']), 50)
+            self.assertEqual(saved.data['allocations'], [])
+
+        allocation = [{'bill':old.data['id'],'amount':'30'}]
+        for mode in ['advance', 'against-ref']:
+            rejected = self.command('receipt', receiptMode=mode, allocations=allocation, **receipt)
+            self.assertEqual(rejected.status_code, 400, rejected.data)
+        allocation[0]['amount'] = '50'
+        posted = self.command('receipt', receiptMode='against-ref', allocations=allocation, **receipt)
+        self.assertEqual(posted.status_code, 201, posted.data)
+        self.assertEqual(posted.data['receiptMode'], 'Against Ref')
+        self.assertEqual(Decimal(posted.data['unallocated']), 0)
+        self.assertEqual(Decimal(self.client.get(path, params).data[0]['outstanding']), 170)
+        history = self.client.get(path, {**params, 'history':'true'})
+        self.assertEqual(history.status_code, 200, history.data)
+        self.assertEqual({row['currency'] for row in history.data}, {'UGX', 'USD'})
+        self.assertEqual(Decimal(history.data[0]['total']), 220)
+        self.assertEqual(Decimal(history.data[0]['paid']), 50)
+        self.command('receipt', receiptMode='against-ref', **{**receipt, 'amount':'170'},
+                     allocations=[{'bill':old.data['id'],'amount':'170'}])
+        self.assertEqual(self.client.get(path, params).data, [])
+        self.assertEqual(Decimal(self.client.get(path, {**params, 'history':'true'}).data[0]['outstanding']), 0)
+
+    def test_manual_cash_sales_post_directly_and_credit_sales_remain_receivable(self):
+        cash = self.command('invoice', salePayment='cash', cashAccount='1200',
+                            items=[{'description':'Walk-in sale','quantity':'1','price':'100','tax':'10'}])
+        self.assertEqual(cash.status_code, 201, cash.data)
+        self.assertEqual(cash.data['salePayment'], 'cash')
+        self.assertEqual(cash.data['partyName'], 'Walk-in customer')
+        self.assertEqual(Decimal(cash.data['outstanding']), 0)
+        self.assertEqual({row['account'] for row in cash.data['journal']}, {'1200', '4100', '2200'})
+        self.assertEqual(Decimal(next(row['debit'] for row in cash.data['journal'] if row['cash'])), 110)
+
+        named = self.invoice(salePayment='cash', cashAccount='1100')
+        self.assertEqual(named.status_code, 201, named.data)
+        self.assertEqual(named.data['party'], self.customer)
+        credit = self.invoice(salePayment='credit')
+        self.assertEqual(credit.status_code, 201, credit.data)
+        self.assertEqual(Decimal(credit.data['outstanding']), 220)
+        self.assertEqual(Decimal(self.report(party=self.customer)['ledgerClosing']), 220)
+
+        duplicate = self.command('receipt', party=self.customer, cashAccount='1100', amount='1',
+                                 allocations=[{'bill':named.data['id'],'amount':'1'}])
+        self.assertEqual(duplicate.status_code, 400, duplicate.data)
+        invalid_cash = self.invoice(salePayment='cash', cashAccount='1300')
+        self.assertEqual(invalid_cash.status_code, 400, invalid_cash.data)
+        invalid_credit = self.command('invoice', salePayment='credit')
+        self.assertEqual(invalid_credit.status_code, 400, invalid_credit.data)
+
+        reversal = self.command('reverse', document=cash.data['id'], notes='Refund', date='2026-02-02')
+        self.assertEqual(reversal.status_code, 201, reversal.data)
+        self.assertEqual(self.report()['cashFlow'], {'operating':'220.00'})
+        split = {row['kind']: Decimal(row['amount']) for row in self.detailed_pl()['salesBreakdown']}
+        self.assertEqual(split, {'cash':200, 'credit':200, 'unclassified':0})
+
+    def test_quick_supplier_creation_reuses_supplier_and_can_post_purchase(self):
+        self.client.force_authenticate(self.accounts)
+        path = '/api/accounting/masters/parties/'
+        fields = {'kind':'supplier', 'name':'Tea supplier', 'reuseSupplier':True}
+        saved = self.client.post(path, fields, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        retry = self.client.post(path, {**fields, 'name':'tea supplier'}, format='json')
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual(retry.data, saved.data)
+        boot = self.client.get('/api/accounting/setup/')
+        choices = [row['id'] for row in boot.data['parties'] if row['kind']=='supplier']
+        self.assertIn(saved.data['id'], choices)
+        purchase = self.command('bill', party=saved.data['id'],
+                                items=[{'description':'Tea powder','quantity':'1','price':'20'}])
+        self.assertEqual(purchase.status_code, 201, purchase.data)
+        self.assertEqual(purchase.data['party'], saved.data['id'])
+
+    def test_paid_purchase_posts_to_mobile_money_without_supplier_payable(self):
+        Account.objects.create(code='1210', name='Mobile money', kind='asset', cash=True)
+        paid = self.invoice('bill', purchasePayment='cash', cashAccount='1210', purchaseMethod='mobile-money')
+        self.assertEqual(paid.status_code, 201, paid.data)
+        self.assertEqual(paid.data['purchasePayment'], 'cash')
+        self.assertEqual(paid.data['purchaseMethod'], 'Mobile money')
+        self.assertEqual(paid.data['party'], self.supplier)
+        self.assertEqual(Decimal(paid.data['outstanding']), 0)
+        self.assertEqual({row['account'] for row in paid.data['journal']}, {'1210', '6100', '1500'})
+        self.assertEqual(Decimal(next(row['credit'] for row in paid.data['journal'] if row['cash'])), 220)
+        invalid = self.invoice('bill', purchasePayment='credit', purchaseMethod='cheque')
+        self.assertEqual(invalid.status_code, 400, invalid.data)
+        credit = self.invoice('bill', purchasePayment='credit')
+        self.assertEqual(credit.status_code, 201, credit.data)
+        self.assertEqual(Decimal(credit.data['outstanding']), 220)
+        self.assertEqual(Decimal(self.report(party=self.supplier)['ledgerClosing']), -220)
+        duplicate = self.command('payment', party=self.supplier, cashAccount='1210', amount='1',
+                                 allocations=[{'bill':paid.data['id'],'amount':'1'}])
+        self.assertEqual(duplicate.status_code, 400, duplicate.data)
+        self.assertEqual(self.report()['cashFlow'], {'operating':'-220.00'})
+        reversal = self.command('reverse', document=paid.data['id'], notes='Refund')
+        self.assertEqual(reversal.status_code, 201, reversal.data)
+        self.assertEqual(Decimal(self.report()['cashFlow']['operating']), 0)
 
     def test_supplier_bill_payment_expense_cash_transfer(self):
         bill=self.invoice('bill');self.assertEqual(bill.status_code,201,bill.data)
@@ -122,6 +252,13 @@ class AccountingTests(APITestCase):
         enqueue('raw:syn',{'kind':'stock-receipt','number':'RAW-SYN','date':'2026-02-01','item':'raw:test','quantity':'2','unit':'kg','contra':'2300'},self.admin)
         self.assertEqual(Document.objects.count(),0)
         q=PostingEvent.objects.get(pk='raw:syn');self.assertTrue(q.error)
+        q.error = "[ErrorDetail(string='Enter a valid decimal number.', code='invalid')]"
+        q.save(update_fields=['error'])
+        queued = self.client.get('/api/accounting/posting-queue/')
+        self.assertIn('total receipt cost', queued.data[0]['error'])
+        missing = self.client.post('/api/accounting/posting-queue/', {'source':q.pk}, format='json')
+        self.assertEqual(missing.status_code,400,missing.data)
+        self.assertIn('total receipt cost',str(missing.data))
         r=self.client.post('/api/accounting/posting-queue/',{'source':q.pk,'value':'30'},format='json');self.assertEqual(r.status_code,200,r.data)
         self.assertEqual(StockValue.objects.get(pk='raw:test').value,Decimal('30'))
         self.assertEqual(self.client.post('/api/accounting/posting-queue/',{'source':q.pk,'value':'30'},format='json').status_code,400)

@@ -1,9 +1,10 @@
 from django.db import transaction, IntegrityError
+from django.db.models.deletion import ProtectedError
 from .api import AccountingAPIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from .models import Book, Account, Party, Document, PostingEvent, AccountGroup, CostCategory, Currency, VoucherType
-from .services import ACCOUNTS, require, text, day, post
+from .models import Book, Account, Party, Document, DocumentLine, JournalLine, PostingEvent, AccountGroup, CostCategory, Currency, VoucherType
+from .services import ACCOUNTS, RECEIPT_COST_REQUIRED, require, text, day, post, outstanding
 from .reports import report, document_data
 
 
@@ -27,6 +28,10 @@ class Bootstrap(AccountingAPIView):
             'voucherTypes':list(VoucherType.objects.order_by('name').values('id','name','base_kind')),
             'erpCustomers':list(Customer.objects.filter(is_active=True).order_by('name','pk').values('id','name')) if request.user.has_perm('erp.view_customer') else [],
             'canCreateErpCustomer':request.user.has_perm('erp.add_customer'),
+            'supportsManualCashSales':True,
+            'supportsPaidPurchases':True,
+            'receiptModes':[{'value':value,'label':label} for value,label in Document.ReceiptMode.choices],
+            'purchaseMethods':[{'value':value,'label':label} for value,label in Document.PurchaseMethod.choices],
             'canWrite':request.user.is_superuser or request.user.effective_role in {'admin','accounts'},
             'canConfigure':request.user.is_superuser or request.user.effective_role == 'admin'})
 
@@ -45,6 +50,8 @@ class Bootstrap(AccountingAPIView):
             Account.objects.create(code=code,name=name,kind=kind,cash=cash,control=code in {'1300','1400','1500','2100','2200','2300','1600'})
         from .masters import seed_masters
         seed_masters(book=Book.objects.first(), account_model=Account)
+        from .tally_ledgers import seed_tally_ledgers
+        seed_tally_ledgers()
         return self.get(request)
 
 
@@ -71,8 +78,19 @@ class Masters(AccountingAPIView):
                     require(obj.name==text(p.get('name'),200) and obj.group_id==(group.pk if group else None), 'This customer request was accepted with different ledger details.')
                 else: obj=Party.objects.create(name=text(p.get('name'),200),kind=p['kind'],group=group)
                 link_customer(obj,p,request.user)
-            else: obj = Party.objects.create(name=text(p.get('name'),200),kind=p['kind'],group=group)
-            return Response({'id':obj.pk,'source':obj.source})
+            else:
+                name = text(p.get('name'),200)
+                if p.get('reuseSupplier') is True:
+                    require(p['kind']=='supplier' and group is None, 'Quick creation is for supplier ledgers.')
+                    # Serialize quick creation so a retried save can select the same supplier.
+                    require(Book.objects.select_for_update().filter(pk=1).first() is not None,
+                            'Configure the accounting book first.')
+                    matches = list(Party.objects.filter(kind='supplier',name__iexact=name).order_by('pk')[:2])
+                    require(len(matches)<2, 'More than one supplier has this name. Select the correct supplier from the dropdown.')
+                    obj = matches[0] if matches else Party.objects.create(name=name,kind='supplier')
+                else:
+                    obj = Party.objects.create(name=name,kind=p['kind'],group=group)
+            return Response({'id':obj.pk,'source':obj.source,'name':obj.name})
         if kind == 'customer-link':
             from .customer_links import link_customer
             require(type(p.get('party')) is int, 'Select an accounting customer ledger.')
@@ -90,6 +108,35 @@ class Masters(AccountingAPIView):
                 raise ValidationError('Account code already exists.')
             return Response({'id':obj.pk})
         access(request.user, admin=True)
+        if kind in {'group-update', 'group-delete'}:
+            require(type(p.get('group')) is int, 'Select a saved account group.')
+            groups = {g.pk: g for g in AccountGroup.objects.select_for_update().order_by('pk')}
+            obj = groups.get(p['group'])
+            require(obj is not None, 'This group no longer exists.')
+            require(obj.name == p.get('expectedName') and obj.parent_id == p.get('expectedParent'),
+                    'This group has changed. Refresh Masters and try again.')
+            if kind == 'group-delete':
+                try:
+                    with transaction.atomic():
+                        obj.delete()
+                except (ProtectedError, IntegrityError):
+                    raise ValidationError('Move the ledgers and subgroups out of this group before deleting it.')
+                return Response({'detail': 'Group deleted.'})
+            parent = master_group({'group': p.get('parent')}, obj.kind)
+            ancestor = parent
+            seen = {obj.pk}
+            while ancestor is not None:
+                require(ancestor.pk not in seen, 'Choose a parent outside this group and its subgroups.')
+                seen.add(ancestor.pk)
+                ancestor = groups.get(ancestor.parent_id)
+            obj.name = text(p.get('name'), 150)
+            obj.parent = parent
+            try:
+                with transaction.atomic():
+                    obj.save(update_fields=['name', 'parent'])
+            except IntegrityError:
+                raise ValidationError('An account group with this name already exists.')
+            return Response({'id': obj.pk})
         if kind == 'pnl-classification':
             require(isinstance(p.get('account'),str), 'Select a saved ledger code.')
             obj=Account.objects.select_for_update().filter(pk=p.get('account'),kind__in=['income','expense']).first()
@@ -202,6 +249,70 @@ class Commands(AccountingAPIView):
         return Response(document_data(d),status=201)
 
 
+class VoucherDelete(AccountingAPIView):
+    @transaction.atomic
+    def delete(self, request, pk):
+        access(request.user, write=True)
+        book = Book.objects.select_for_update().filter(pk=1).first()
+        require(book is not None, 'Configure the accounting book first.')
+        voucher = Document.objects.select_for_update().filter(pk=pk).first()
+        if voucher is None:
+            return Response(status=204)
+        require(not book.closed_through or voucher.date > book.closed_through,
+                'This voucher is in a closed period.')
+        require(not voucher.source and not voucher.valuations.exists(),
+                'This voucher is linked to an operational record or stock valuation. Correct it through the source workflow.')
+        require(not voucher.reversal_of_id and not hasattr(voucher, 'reversal'),
+                'This voucher is part of a reversal. Its linked entries must be resolved together.')
+        try:
+            # The explicit delete action is the only exception to posted row immutability.
+            # Django protects dependent rows and the transaction rolls back on failure.
+            JournalLine._base_manager.filter(document_id=pk).delete()
+            DocumentLine.objects.filter(document_id=pk).delete()
+            Document._base_manager.filter(pk=pk).delete()
+        except ProtectedError:
+            raise ValidationError('This voucher has linked payments, allocations, or other accounting records. Resolve those links before deleting it.')
+        return Response(status=204)
+
+
+class ReceiptInvoices(AccountingAPIView):
+    def get(self, request):
+        access(request.user, write=True)
+        when = day(request.query_params.get('date'))
+        customer = request.query_params.get('customer', '')
+        require(customer.isdecimal() and len(customer) <= 18, 'Select a customer ledger.')
+        history = request.query_params.get('history') == 'true'
+        invoices = Document.objects.filter(
+            kind='invoice', party_id=customer, party__kind='customer', date__lte=when,
+            reversal__isnull=True,
+        ).order_by('date', 'pk')
+        payment_types = {}
+        if history:
+            from erp.models import SharedEntry
+            snapshot = SharedEntry.objects.filter(pk='invoices').first()
+            if snapshot:
+                payment_types = {
+                    'invoice:'+str(row['id']): (row.get('dispatchPayment') or {}).get('kind')
+                    for row in snapshot.content
+                }
+        else:
+            invoices = invoices.filter(currency=request.query_params.get('currency'))
+        rows = []
+        for invoice in invoices:
+            balance = outstanding(invoice)
+            if history or balance > 0:
+                rows.append({
+                    'id': invoice.pk, 'number': invoice.number, 'date': str(invoice.date),
+                    'currency': invoice.currency, 'outstanding': str(balance),
+                    **({
+                        'total': str(invoice.total), 'paid': str(invoice.total - balance),
+                        'paymentType': invoice.trade_payment or payment_types.get(invoice.source) or '',
+                    } if history else {}),
+                    'items': list(invoice.items.values('id', 'description')),
+                })
+        return Response(rows)
+
+
 class Reports(AccountingAPIView):
     def get(self,request):
         access(request.user)
@@ -223,7 +334,14 @@ class ClosePeriod(AccountingAPIView):
 class PostingQueue(AccountingAPIView):
     def get(self,request):
         access(request.user)
-        return Response([{'source':e.source,'payload':e.payload,'error':e.error,'createdAt':e.created_at.isoformat()} for e in PostingEvent.objects.filter(document__isnull=True,cancelled=False).order_by('created_at')])
+        rows = []
+        for event in PostingEvent.objects.filter(document__isnull=True,cancelled=False).order_by('created_at'):
+            payload = event.payload
+            needs_cost = payload.get('kind') == 'stock-receipt' and payload.get('value') in (None, '')
+            rows.append({'source':event.source,'payload':payload,
+                         'error':RECEIPT_COST_REQUIRED if needs_cost else event.error,
+                         'createdAt':event.created_at.isoformat()})
+        return Response(rows)
 
     @transaction.atomic
     def post(self,request):
@@ -243,15 +361,17 @@ class PostingQueue(AccountingAPIView):
             else:
                 require(p.get('blocked','').startswith('Map this invoice'), p['blocked'])
                 p['party']=request.data.get('party'); p.pop('blocked')
+        if p['kind']=='stock-receipt' and p.get('value') in (None, ''):
+            p['value']=request.data.get('value')
+            require(p['value'] not in (None, ''), RECEIPT_COST_REQUIRED)
         if p.get('currency') and Book.objects.first().currency != p['currency']:
-            p['fx']=request.data.get('fx')
+            p['fx']=request.data.get('fx') or p.get('fx')
+            require(p['fx'] not in (None, ''), 'Enter the exchange rate to the reporting currency.')
             if p['kind']=='stock-receipt':
                 from .services import dec, money
                 p['value']=str(money(dec(p['value'])*dec(p['fx'],8,True))); p['currency']=Book.objects.first().currency; p['fx']='1'
         if p['kind']=='invoice' and not p.get('party'):
             p['party']=request.data.get('party')
-        if p['kind']=='stock-receipt' and 'value' not in p:
-            p['value']=request.data.get('value')
         d=post(p,request.user,source=e.source)
         e.document=d; e.error=''; e.payload=p; e.save(update_fields=['document','error','payload'])
         return Response(document_data(d))

@@ -1,0 +1,218 @@
+[
+  {
+    "group": "Capital Account",
+    "classification": "Equity",
+    "statement": "Balance Sheet",
+    "activity": "Financing",
+    "nature": "Inflow / Outflow",
+    "treatment": "Capital introduced = inflow; drawings/dividends = outflow"
+  },
+  {
+    "group": "Reserves & Surplus",
+    "classification": "Equity",
+    "statement": "Balance Sheet",
+    "activity": "Financing",
+    "nature": "Non-cash / depends",
+    "treatment": "Retained earnings are not themselves a cash movement"
+  },
+  {
+    "group": "Loans (Liability)",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Financing",
+    "nature": "Inflow / Outflow",
+    "treatment": "Loan received = inflow; principal repayment = outflow"
+  },
+  {
+    "group": "Bank OD A/c",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Financing / Cash Equivalent",
+    "nature": "Inflow / Outflow",
+    "treatment": "Check whether overdraft is repayable on demand and part of cash management under IAS 7"
+  },
+  {
+    "group": "Secured Loans",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Financing",
+    "nature": "Inflow / Outflow",
+    "treatment": "Loan proceeds in; principal repayments out"
+  },
+  {
+    "group": "Unsecured Loans",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Financing",
+    "nature": "Inflow / Outflow",
+    "treatment": "Loan proceeds in; principal repayments out"
+  },
+  {
+    "group": "Current Liabilities",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Operating",
+    "nature": "Inflow / Outflow adjustment",
+    "treatment": "Working-capital movement; increase generally adds, decrease deducts"
+  },
+  {
+    "group": "Sundry Creditors",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Operating",
+    "nature": "Inflow / Outflow adjustment",
+    "treatment": "Increase generally adds; decrease generally deducts in indirect CFO"
+  },
+  {
+    "group": "Duties & Taxes",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Operating",
+    "nature": "Outflow when paid",
+    "treatment": "Tax/VAT payment generally operating; tax classification can depend on identifiable transaction"
+  },
+  {
+    "group": "Provisions",
+    "classification": "Liability",
+    "statement": "Balance Sheet",
+    "activity": "Operating / depends",
+    "nature": "Adjustment",
+    "treatment": "Movement may be non-cash; cash settlement follows underlying nature"
+  },
+  {
+    "group": "Fixed Assets",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Investing",
+    "nature": "Outflow / Inflow",
+    "treatment": "Purchase = outflow; sale proceeds = inflow"
+  },
+  {
+    "group": "Investments",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Investing",
+    "nature": "Outflow / Inflow",
+    "treatment": "Purchase = outflow; sale proceeds = inflow; cash equivalents excluded"
+  },
+  {
+    "group": "Current Assets",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Operating",
+    "nature": "Inflow / Outflow adjustment",
+    "treatment": "Working-capital movement; classify each item by nature"
+  },
+  {
+    "group": "Bank Accounts",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Cash & Cash Equivalents",
+    "nature": "Excluded from activity",
+    "treatment": "Opening and closing cash/bank balances reconcile the cash flow statement"
+  },
+  {
+    "group": "Cash-in-Hand",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Cash & Cash Equivalents",
+    "nature": "Excluded from activity",
+    "treatment": "Opening and closing cash balances reconcile the cash flow statement"
+  },
+  {
+    "group": "Deposits (Asset)",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Operating / Investing",
+    "nature": "Depends",
+    "treatment": "Classify based on purpose and duration of deposit"
+  },
+  {
+    "group": "Loans & Advances (Asset)",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Operating / Investing",
+    "nature": "Depends",
+    "treatment": "Employee/supplier advances often operating; loans to others generally investing"
+  },
+  {
+    "group": "Sundry Debtors",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Operating",
+    "nature": "Inflow / Outflow adjustment",
+    "treatment": "Increase generally deducts; decrease generally adds in indirect CFO"
+  },
+  {
+    "group": "Stock-in-Hand",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Operating",
+    "nature": "Inflow / Outflow adjustment",
+    "treatment": "Increase generally deducts; decrease generally adds in indirect CFO"
+  },
+  {
+    "group": "Branch / Divisions",
+    "classification": "Depends",
+    "statement": "Balance Sheet / P&L",
+    "activity": "Depends",
+    "nature": "Depends",
+    "treatment": "Review the underlying ledger and accounting setup"
+  },
+  {
+    "group": "Sales Accounts",
+    "classification": "Income",
+    "statement": "P&L",
+    "activity": "Operating",
+    "nature": "Inflow when collected",
+    "treatment": "Cash received from customers; credit sales affect receivables"
+  },
+  {
+    "group": "Purchase Accounts",
+    "classification": "Expense",
+    "statement": "P&L",
+    "activity": "Operating",
+    "nature": "Outflow when paid",
+    "treatment": "Cash paid to suppliers; credit purchases affect payables"
+  },
+  {
+    "group": "Direct Incomes",
+    "classification": "Income",
+    "statement": "P&L",
+    "activity": "Operating",
+    "nature": "Inflow when received",
+    "treatment": "Usually operating for ordinary business income"
+  },
+  {
+    "group": "Indirect Incomes",
+    "classification": "Income",
+    "statement": "P&L",
+    "activity": "Operating / depends",
+    "nature": "Inflow when received",
+    "treatment": "Interest/dividend received classification depends on consistent IAS 7 policy"
+  },
+  {
+    "group": "Direct Expenses",
+    "classification": "Expense",
+    "statement": "P&L",
+    "activity": "Operating",
+    "nature": "Outflow when paid",
+    "treatment": "Ordinary production and operating payments"
+  },
+  {
+    "group": "Indirect Expenses",
+    "classification": "Expense",
+    "statement": "P&L",
+    "activity": "Operating",
+    "nature": "Outflow when paid",
+    "treatment": "Ordinary administration and selling payments"
+  },
+  {
+    "group": "Misc. Expenses (Asset)",
+    "classification": "Asset",
+    "statement": "Balance Sheet",
+    "activity": "Depends",
+    "nature": "Depends",
+    "treatment": "Review whether it is a deferred expense or an actual asset; accounting treatment may differ"
+  }
+]

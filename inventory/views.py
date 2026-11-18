@@ -7,6 +7,7 @@ from rest_framework import permissions, serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from accounting.models import Book, StockValue
 from .models import RawMaterial, RawMovement, ProcurementPlan, ProcurementDelivery, ProcurementPlanRevision
 
 
@@ -42,7 +43,18 @@ class InventorySnapshot(APIView):
     def get(self, request):
         require(request.user, 'view_rawmaterial')
         require(request.user, 'view_rawmovement')
-        return Response({'materials': [material_data(m) for m in RawMaterial.objects.all()],
+        materials = list(RawMaterial.objects.all())
+        currency = Book.objects.filter(pk=1).values_list('currency', flat=True).first()
+        stock_valuation = None
+        if currency:
+            units = {f'raw:{material.pk}': material.unit for material in materials}
+            values = [stock.value for stock in StockValue.objects.filter(pk__in=units)
+                      if stock.unit == units[stock.pk]]
+            if values:
+                stock_valuation = {'amount': str(sum(values, Decimal('0.00'))),
+                                   'currency': currency, 'materialCount': len(values)}
+        return Response({'materials': [material_data(m) for m in materials],
+                         'stockValuation': stock_valuation,
                          'movements': [movement_data(m) for m in RawMovement.objects.select_related('material')],
                          'plans': [plan_data(p) for p in ProcurementPlan.objects.select_related('material').prefetch_related('expected_deliveries')] if request.user.has_perm('inventory.view_procurementplan') else [],
                          'canPost': request.user.has_perm('inventory.add_rawmovement'),

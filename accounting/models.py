@@ -94,6 +94,19 @@ class Party(models.Model):
 
 
 class Document(models.Model):
+    class PurchaseMethod(models.TextChoices):
+        CASH = 'cash', 'Cash'
+        BANK_TRANSFER = 'bank-transfer', 'Bank transfer'
+        CHEQUE = 'cheque', 'Cheque'
+        MOBILE_MONEY = 'mobile-money', 'Mobile money'
+        OTHER = 'other', 'Other'
+
+    class ReceiptMode(models.TextChoices):
+        ADVANCE = 'advance', 'Advance'
+        AGAINST_REF = 'against-ref', 'Against Ref'
+        NEW_REF = 'new-ref', 'New Ref'
+        ON_ACCOUNT = 'on-account', 'On Account'
+
     objects = AppendOnlyQuerySet.as_manager()
     command = models.UUIDField(unique=True)
     digest = models.CharField(max_length=64)
@@ -107,6 +120,9 @@ class Document(models.Model):
     total = models.DecimalField(max_digits=24, decimal_places=2)
     notes = models.TextField(blank=True)
     cash_class = models.CharField(max_length=15, default='operating')
+    trade_payment = models.CharField(max_length=6, choices=[('cash', 'Cash'), ('credit', 'Credit')], blank=True, default='')
+    receipt_mode = models.CharField(max_length=11, choices=ReceiptMode.choices, blank=True, default='')
+    purchase_method = models.CharField(max_length=14, choices=PurchaseMethod.choices, blank=True, default='')
     voucher_type = models.ForeignKey(VoucherType, null=True, blank=True, on_delete=models.PROTECT)
     cost_category = models.ForeignKey(CostCategory, null=True, blank=True, on_delete=models.PROTECT)
     reversal_of = models.OneToOneField('self', null=True, on_delete=models.PROTECT, related_name='reversal')

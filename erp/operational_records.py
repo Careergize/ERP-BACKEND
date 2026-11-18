@@ -14,6 +14,7 @@ from .operational_policy import authorize
 from functools import lru_cache
 from pathlib import Path
 import json
+import re
 
 
 @lru_cache(maxsize=1)
@@ -230,6 +231,29 @@ def validate_ledger(content, previous, user):
         row = movements[key]; product = products.get(str(row.get('productId')))
         require(product and row.get('unit') == product.unit and row.get('type') in ('IN', 'OUT'), 'Use an exact finished product, unit and direction.')
         quantity(row.get('quantity'), True); require(product.opening_date <= dated(row.get('date')) <= timezone.localdate(), 'Movement date must follow opening and cannot be future.')
+        pricing = row.get('receiptPricing')
+        if pricing is not None:
+            unit = product.unit.lower()
+            require(row['type'] == 'IN' and unit in ('kg', 'ctn') and
+                    not any(row.get(key) for key in ('dispatchId', 'jobCardId', 'manufacturingItemId')),
+                    'Receipt pricing is only available for manual kilogram or carton receipts.')
+            require(isinstance(pricing, dict) and set(pricing) - {'priceBasis'} in (
+                {'currency', 'unitPrice'}, {'currency', 'unitPrice', 'cartons', 'kgPerCarton'}),
+                'Provide valid receipt pricing.')
+            require(pricing.get('priceBasis', 'kg') == 'kg', 'Enter the price per kg.')
+            currency = pricing['currency']
+            require(isinstance(currency, str) and re.fullmatch('[A-Z]{3}', currency), 'Enter a three-letter currency code.')
+            quantity(pricing['unitPrice'])
+            require(unit != 'ctn' or 'cartons' in pricing, 'Enter the carton count and average kg per carton.')
+            if 'cartons' in pricing:
+                cartons = quantity(pricing['cartons'], True)
+                kg_per_carton = quantity(pricing['kgPerCarton'], True)
+                require(cartons == cartons.to_integral_value(), 'Enter a whole carton count.')
+                if unit == 'ctn':
+                    require(cartons == quantity(row['quantity']), 'Carton count must match the received quantity.')
+                else:
+                    require(abs(cartons * kg_per_carton - quantity(row['quantity'])) <= Decimal('0.0000005'),
+                            'Carton count and average kg must match the received quantity.')
         require(not row.get('purchaseOrderId') and not row.get('goodsReceivedNoteId') and not key.startswith(('purchase-line-', 'grn-line-')), 'Purchase/GRN receipts are written only by their source services.')
         if row.get('dispatchId'):
             dispatch = dispatches.get(row['dispatchId']); require(dispatch is not None, 'A sales movement requires its matching dispatch.')
@@ -245,11 +269,11 @@ def validate_ledger(content, previous, user):
             require(sum((quantity(m['quantity']) for m in movements.values() if m.get('stockApprovalId') == row['stockApprovalId']), Decimal(0)) <= quantity(release['acceptedQuantity']), 'Receipts exceed the total accepted quantity of this authorized lot.')
             require(row['unit'] == release.get('unit', release['subject'].get('unit')) and any(r['id'] == row.get('qualityReleaseId') and r['inspectionId'] == release['inspectionId'] and r['purpose'] == 'quality' for r in qc['releases']), 'Receipt requires the exact quality-release reference and output unit.')
         else:
-            require(user.effective_role in ('admin', 'store_keeper') and row.get('reference'), 'Store/Admin and an explicit reference are required for manual stock movements.')
             if row['type'] == 'IN':
                 require(user.effective_role == 'admin', 'Only Admin records unbatched opening/reference receipts.')
                 require(not any(i['subject'].get('productId') == str(product.pk) and i['status'] != 'Approved/Released' for i in qc['inspections']), 'A QC hold prevents manual receipt for this product.')
             else:
+                require(user.effective_role in ('admin', 'store_keeper') and row.get('reference'), 'Store/Admin and an explicit reference are required for manual stock movements.')
                 require(row.get('movementPurpose') in ('transfer', 'waste', 'adjustment') and row.get('remarks'), 'Non-sales OUT requires purpose and reason.')
                 require(row['movementPurpose'] != 'adjustment' or user.effective_role == 'admin', 'Admin must approve adjustments.')
     for key, dispatch in dispatches.items():

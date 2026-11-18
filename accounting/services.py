@@ -14,6 +14,7 @@ from .models import Book, Account, Party, Document, DocumentLine, JournalLine, A
 
 ZERO = Decimal('0')
 CENT = Decimal('.01')
+RECEIPT_COST_REQUIRED = 'Enter the total receipt cost to post this stock receipt.'
 ACCOUNTS = [
     ('1100', 'Cash', 'asset', True), ('1200', 'Bank', 'asset', True),
     ('1300', 'Customer receivables', 'asset', False), ('1400', 'Inventory', 'asset', False),
@@ -75,6 +76,8 @@ def journal(doc, code, signed, party=None, foreign=ZERO):
 
 
 def outstanding(doc, as_of=None):
+    if doc.trade_payment == 'cash':
+        return ZERO
     rows = doc.settlements.select_related('payment').all()
     allocated = sum((a.amount for a in rows if (not as_of or (a.date or a.payment.date) <= as_of) and (not hasattr(a.payment,'reversal') or (as_of and a.payment.reversal.date > as_of))), ZERO)
     return doc.total - allocated
@@ -141,10 +144,29 @@ def post(payload, user, source=None):
     fx = dec(payload.get('fx', '1'), 8, True)
     require(currency == book.currency or 'fx' in payload, 'An explicit exchange rate is required for foreign currency.')
     require(currency != book.currency or fx == 1, 'Reporting currency exchange rate must be 1.')
+    trade_payment = ''
+    for key, trade_kind in (('salePayment', 'invoice'), ('purchasePayment', 'bill')):
+        if key in payload:
+            trade_payment = payload[key]
+            require(kind == trade_kind and source is None and trade_payment in ('cash', 'credit'),
+                    'Select paid in full or credit for a manual sales or purchase voucher.')
+    purchase_method = payload.get('purchaseMethod', '')
+    if 'purchaseMethod' in payload:
+        require(kind == 'bill' and trade_payment == 'cash' and purchase_method in Document.PurchaseMethod.values,
+                'Select a payment method for a paid-in-full purchase.')
+    receipt_mode = payload.get('receiptMode', '')
+    if 'receiptMode' in payload:
+        require(kind == 'receipt' and source is None and receipt_mode in Document.ReceiptMode.values,
+                'Select a valid receipt allocation type.')
+    paid_trade = trade_payment == 'cash'
+    walk_in_sale = paid_trade and kind == 'invoice'
+    cash_account = account(payload.get('cashAccount'), cash=True) if paid_trade else None
     party = None
     if kind in {'invoice', 'bill', 'receipt', 'payment', 'allocate'}:
-        party = Party.objects.filter(pk=payload.get('party')).first()
-        require(party is not None and (kind=='allocate' or party.kind == ('customer' if kind in {'invoice', 'receipt'} else 'supplier')), 'Select the correct customer or supplier.')
+        party_id = payload.get('party')
+        if not walk_in_sale or party_id is not None:
+            party = Party.objects.filter(pk=party_id).first()
+            require(party is not None and (kind=='allocate' or party.kind == ('customer' if kind in {'invoice', 'receipt'} else 'supplier')), 'Select the correct customer or supplier.')
     customer = None
     if payload.get('customer'):
         customer = Party.objects.filter(pk=payload['customer'], kind='customer').first()
@@ -155,7 +177,7 @@ def post(payload, user, source=None):
     doc = Document.objects.create(command=command, digest=digest, source=source, kind=kind,
         number=text(payload.get('number'), 80), date=when, currency=currency, fx=fx, party=party,
         total=0, notes=str(payload.get('notes', ''))[:2000], actor=user,
-        cash_class=payload.get('cashClass', 'operating'), voucher_type=voucher_type, cost_category=cost_category)
+        cash_class='operating' if paid_trade else payload.get('cashClass', 'operating'), trade_payment=trade_payment, purchase_method=purchase_method, receipt_mode=receipt_mode, voucher_type=voucher_type, cost_category=cost_category)
     require(doc.cash_class in {'operating', 'investing', 'financing'}, 'Select a cash-flow classification.')
     if kind in {'invoice', 'bill', 'expense'}:
         items = payload.get('items')
@@ -182,7 +204,11 @@ def post(payload, user, source=None):
         require(doc.total > 0, 'Document total must be positive.')
         control = '1300' if kind == 'invoice' else '2100' if kind == 'bill' else account(payload.get('cashAccount'), cash=True).pk
         signed = money(doc.total * fx) * (1 if kind == 'invoice' else -1)
-        journal(doc, control, signed, party, doc.total * (1 if kind == 'invoice' else -1))
+        foreign = doc.total if kind == 'invoice' else -doc.total
+        if cash_account:
+            journal(doc, cash_account.pk, signed, foreign=foreign)
+        else:
+            journal(doc, control, signed, party, foreign)
     elif kind in {'receipt', 'payment', 'allocate'}:
         payment_doc=doc
         if kind=='allocate':
@@ -200,6 +226,8 @@ def post(payload, user, source=None):
         if kind!='allocate':journal(doc, '1300' if sign == 1 else '2100', -money(doc.total * fx) * sign, party, -doc.total * sign)
         allocations = payload.get('allocations', [])
         require(isinstance(allocations, list) and len(allocations) <= 200, 'Invalid allocations.')
+        if receipt_mode and receipt_mode != Document.ReceiptMode.AGAINST_REF:
+            require(not allocations, 'Choose Against Ref to apply this receipt to an existing invoice.')
         used = ZERO
         for row in allocations:
             bill = Document.objects.select_for_update().filter(pk=row.get('bill'), kind='invoice' if sign==1 else 'bill', party=party, currency=currency, reversal__isnull=True).first()
@@ -222,6 +250,8 @@ def post(payload, user, source=None):
             require(used>0,'Select at least one allocation.')
             allocated=payment_doc.allocations.aggregate(n=Sum('amount'))['n'] or ZERO
             require(allocated<=payment_doc.total,'Allocations exceed the original payment amount.')
+        elif receipt_mode == Document.ReceiptMode.AGAINST_REF:
+            require(used == doc.total, 'Allocate the full receipt amount against existing invoices.')
         else:require(used <= doc.total, 'Allocations exceed payment amount.')
     elif kind == 'assign-cost':
         require(currency == book.currency, 'Assign costs in reporting currency.')
@@ -266,7 +296,10 @@ def post(payload, user, source=None):
         require(currency == book.currency, 'Valuation commands use reporting currency.')
         qty = dec(payload.get('quantity'), 6, True)
         item, unit = text(payload.get('item'), 120), text(payload.get('unit'), 30)
-        value = dec(payload.get('value'), positive=True) if kind == 'stock-receipt' else None
+        value = None
+        if kind == 'stock-receipt':
+            require(payload.get('value') not in (None, ''), RECEIPT_COST_REQUIRED)
+            value = dec(payload['value'], positive=True)
         moved = stock_move(doc, item, unit, qty if kind == 'stock-receipt' else -qty, value)
         doc.total = abs(moved)
         contra = payload.get('contra', '2300' if kind == 'stock-receipt' else '5100')

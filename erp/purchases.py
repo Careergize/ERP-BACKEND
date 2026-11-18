@@ -8,11 +8,17 @@ from rest_framework import serializers
 from rest_framework.exceptions import APIException
 from .models import FinishedStockItem, PurchaseOrder, PurchaseOrderLine
 from .views import DraftRecordViewSet
-from .finished_stock import item_label
+from .finished_stock import BUILTIN_CATEGORIES, finished_categories, item_label
+from .models import FinishedStockCategory
 
 
 class NewStockSerializer(serializers.Serializer):
-    category = serializers.ChoiceField(choices=['carrier-bags', 'flat-bags', 'packing'])
+    category = serializers.CharField(max_length=80)
+
+    def validate_category(self, value):
+        if value not in finished_categories():
+            raise serializers.ValidationError('Choose a saved finished-goods category.')
+        return value
     subgroup = serializers.CharField(max_length=200, allow_blank=True, default='')
     customer = serializers.CharField(max_length=200, allow_blank=True, default='')
     size = serializers.CharField(max_length=100, allow_blank=True, default='')
@@ -116,6 +122,12 @@ class PurchaseSerializer(serializers.ModelSerializer):
                 raise error
             return order
         # Stock entry is part of the same database transaction as the purchase.
+        custom_categories = {line['stock_details']['category'] for line in lines
+                             if line['stock_mode'] == 'manual'} - BUILTIN_CATEGORIES.keys()
+        locked_categories = set(FinishedStockCategory.objects.select_for_update()
+                                .filter(pk__in=custom_categories).order_by('pk').values_list('pk', flat=True))
+        if locked_categories != custom_categories:
+            raise serializers.ValidationError({'lines': 'A finished-goods category was deleted. Select another category.'})
         # The immutable purchase line itself is the receipt, so replay cannot post twice.
         ids = sorted({line['stock_item'].pk for line in lines if line['stock_item']})
         list(FinishedStockItem.objects.select_for_update().filter(pk__in=ids).order_by('pk'))

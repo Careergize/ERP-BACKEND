@@ -1,8 +1,13 @@
+import json
+from pathlib import Path
 from collections import defaultdict
 from decimal import Decimal
 from django.db.models import Sum
 from .models import Book, Account, Party, Document, JournalLine, StockValue, ValueMovement, CostAssignment, AccountGroup
 from .services import day, require, ZERO, outstanding
+
+
+TALLY_GROUP_MAPPING = json.loads(Path(__file__).with_name('tally_group_mapping.json').read_text(encoding='utf-8'))
 
 
 def document_data(d, as_of=None):
@@ -12,7 +17,11 @@ def document_data(d, as_of=None):
                     'amount': str(a.amount), 'items': [a.item_line.description] if a.item_line else list(a.bill.items.values_list('description', flat=True))}
                    for a in dated_allocations]
     return {'id': d.pk, 'kind': d.kind, 'number': d.number, 'date': str(d.date), 'party': d.party_id,
-        'partyName': d.party.name if d.party else '', 'currency': d.currency, 'fx': str(d.fx), 'total': str(d.total),
+        'partyName': d.party.name if d.party else 'Walk-in customer' if d.kind == 'invoice' and d.trade_payment == 'cash' else '',
+        'salePayment': d.trade_payment if d.kind == 'invoice' else '',
+        'purchasePayment': d.trade_payment if d.kind == 'bill' else '',
+        'receiptMode': d.get_receipt_mode_display(),
+        'purchaseMethod': d.get_purchase_method_display(), 'currency': d.currency, 'fx': str(d.fx), 'total': str(d.total),
         'outstanding': str(outstanding(d, as_of)) if d.kind in {'invoice','bill'} else None,
         'unallocated': str(d.total - sum((a.amount for a in dated_allocations), ZERO)) if d.kind in {'receipt','payment'} else None,
         'reversed': hasattr(d, 'reversal') and (not as_of or d.reversal.date <= as_of), 'reversalOf': d.reversal_of_id, 'notes': d.notes, 'source': d.source,
@@ -28,6 +37,17 @@ def document_data(d, as_of=None):
                        if hasattr(d, 'cost_assignment') else None),
         'items': [{'id': i.pk, 'item': i.item, 'description': i.description, 'quantity': str(i.quantity), 'unit': i.unit, 'price': str(i.price), 'net': str(i.net), 'tax': str(i.tax)} for i in d.items.all()]}
 
+
+def cash_counterpart(line, original):
+    group = line.party.group if line.party_id and line.party.group_id else line.account.group
+    if line.party_id and line.account_id == '1300':
+        return 'Current Assets', group.name if group else 'Sundry Debtors'
+    if line.party_id and line.account_id == '2100':
+        return 'Purchase Accounts', line.party.name
+    if original.kind == 'invoice' and line.account.kind == 'income':
+        return 'Sales Accounts', 'Cash Sales'
+    heading = (group.parent.name if group.parent_id else group.name) if group else 'Ungrouped'
+    return heading, line.account.name
 
 def report(start, end, party=None, account_code=None):
     start, end = day(start), day(end)
@@ -95,13 +115,37 @@ def report(start, end, party=None, account_code=None):
     for a in Account.objects.filter(cash=True):
         b = balances[a.pk]
         cash_accounts.append({'code': a.pk, 'name': a.name, 'opening': str(b[0]), 'inflows': str(b[1]), 'outflows': str(b[2]), 'closing': str(b[0]+b[1]-b[2])})
-    for d in Document.objects.filter(date__range=(start,end)):
-        if d.kind == 'transfer' or (d.kind == 'reverse' and d.reversal_of and d.reversal_of.kind == 'transfer'): continue
-        n = sum((j.debit-j.credit for j in d.journal.filter(account__cash=True)), ZERO)
+    cash_groups = defaultdict(lambda: [ZERO, ZERO])
+    cash_entries = defaultdict(list)
+    for d in Document.objects.filter(date__range=(start,end)).select_related('reversal_of', 'party').prefetch_related(
+            'journal__account__group__parent', 'journal__party__group__parent'):
+        original = d.reversal_of or d
+        if original.kind == 'transfer': continue
+        journal = list(d.journal.all())
+        n = sum((j.debit-j.credit for j in journal if j.account.cash), ZERO)
         # Opening journals are reconciliation balances, not period cash generation.
-        if d.kind != 'opening':
+        if original.kind != 'opening':
             cash_flow[d.cash_class] += n
             cash_details[d.cash_class][0] += max(n,ZERO); cash_details[d.cash_class][1] += max(-n,ZERO)
+        if original.kind == 'opening' or not n:
+            continue
+        counterparts = [(j, j.credit - j.debit) for j in journal if not j.account.cash and j.credit != j.debit]
+        if sum((amount for _, amount in counterparts), ZERO) != n or any(
+                (amount > ZERO) != (n > ZERO) for _, amount in counterparts):
+            counterparts = [(None, n)]
+        for line, amount in counterparts:
+            if line is None:
+                heading, ledger = 'Other cash movements', 'Mixed journal'
+            else:
+                heading, ledger = cash_counterpart(line, original)
+            key = (heading, ledger)
+            direction = 'inflow' if amount > ZERO else 'outflow'
+            cash_groups[key][0 if amount > ZERO else 1] += abs(amount)
+            cash_entries[key].append({
+                'document': d.pk, 'line': line.pk if line else None, 'date': str(d.date),
+                'voucher': d.number, 'kind': d.kind, 'party': d.party.name if d.party_id else '',
+                'notes': d.notes, 'direction': direction, 'amount': str(abs(amount)),
+            })
     parties = {p.pk:p for p in Party.objects.select_related('group')}
     party_totals = [{'id': pk, 'name': parties[pk].name, 'kind': parties[pk].kind, 'groupId':parties[pk].group_id,
                     'group':parties[pk].group.name if parties[pk].group else 'Ungrouped', 'opening': str(v[0]), 'debit': str(v[1]), 'credit': str(v[2]), 'balance': str(v[0]+v[1]-v[2])} for pk,v in customer.items()]
@@ -185,6 +229,9 @@ def report(start, end, party=None, account_code=None):
             'retainedEarnings': str(-sheet['income']-sheet['expense']),
             'difference': str(sum(sheet.values(),ZERO)), 'accounts': [r for r in trial if r['kind'] in {'asset','liability','equity'}]},
         'trialBalance': trial, 'trialDifference': str(sum((Decimal(r['balance']) for r in trial),ZERO)),
+        'cashFlowSummary': [{'group': group, 'ledger': ledger, 'inflow': str(values[0]), 'outflow': str(values[1]), 'entries': cash_entries[(group, ledger)]}
+                            for (group, ledger), values in sorted(cash_groups.items())],
+        'cashFlowGroupMapping': TALLY_GROUP_MAPPING,
         'cashFlow': dict((k,str(v)) for k,v in cash_flow.items()), 'cashBank': cash_accounts,
         'cashFlowDetails':[{'category':k,'inflows':str(v[0]),'outflows':str(v[1]),'net':str(v[0]-v[1])} for k,v in cash_details.items()],
         'partyBalances': party_totals, 'ledger': ledger, 'ledgerOpening': str(opening), 'ledgerClosing': str(running),

@@ -59,6 +59,8 @@ def voucher_pdf(data, company, reporting_currency, as_of):
     fields=[['Party / particulars',data.get('partyName') or 'Company account'],['Cost category',data.get('costCategoryName') or 'Uncategorised'],
             ['Voucher amount',f"{data['currency']} {amount(data['total'])}"],['Saved exchange rate',f"{data.get('fx','1')} {reporting_currency} per 1 {data['currency']}"],
             ['Balances as of',str(as_of)]]
+    if data.get('receiptMode'):fields.append(['Receipt allocation',data['receiptMode']])
+    if data.get('purchaseMethod'):fields.append(['Payment method',data['purchaseMethod']])
     if data.get('outstanding') is not None:fields.append(['Outstanding invoice / bill',f"{data['currency']} {amount(data['outstanding'])}"])
     if data.get('unallocated') is not None:fields.append(['Unallocated receipt / payment',f"{data['currency']} {amount(data['unallocated'])}"])
     if data.get('reversalOf'):fields.append(['Reversal of record',data['reversalOf']])

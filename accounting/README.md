@@ -13,6 +13,9 @@ source, not a statement that the remote server has been deployed or reconciled.
   names are not automatically merged.
 - Normalized financial documents/lines, debit/credit journal lines, receipts,
   supplier payments, expense vouchers, internal transfers and opening journals.
+- Manual sales vouchers can post on credit to a customer ledger or post a paid-in-full sale directly to a cash, bank or mobile-money account. The customer ledger is optional for a paid-in-full sale.
+- Manual purchase vouchers can record a supplier bill on credit or pay it in full from a cash, bank or mobile-money account. Both use the selected supplier and invoice or receipt number. For paid purchases, the voucher also records the payment method, such as cheque or bank transfer, separately from the ledger.
+- Manual customer receipts distinguish Advance, Against Ref, New Ref and On Account. Against Ref allocates the full receipt to open invoices. New Ref uses the receipt number as a reference and remains available for later allocation.
 - Partial payment allocations to one or several invoices/bills and optionally
   specific purchased item lines. Advances can be applied later without recording
   cash a second time. Bounds, party, currency and date checks prevent overpayment

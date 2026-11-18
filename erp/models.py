@@ -135,10 +135,15 @@ class PurchaseOrder(Record):
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, editable=False)
 
 
+class FinishedStockCategory(models.Model):
+    key = models.CharField(primary_key=True, max_length=80)
+    name = models.CharField(max_length=80)
+
+
 class FinishedStockItem(models.Model):
     id = models.CharField(primary_key=True, max_length=100)
     name = models.CharField(max_length=250)
-    category = models.CharField(max_length=20, choices=[('carrier-bags', 'Carrier Bags'), ('flat-bags', 'Flat Bags'), ('packing', 'Packing')])
+    category = models.CharField(max_length=80)
     subgroup = models.CharField(max_length=200, blank=True)
     customer = models.CharField(max_length=200, blank=True)
     size = models.CharField(max_length=100, blank=True)

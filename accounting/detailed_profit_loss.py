@@ -2,8 +2,9 @@
 from collections import defaultdict
 from decimal import Decimal
 from .api import AccountingAPIView
-from .models import AccountGroup, Book, Document, JournalLine, Party, PostingEvent, ValueMovement
+from .models import Account, AccountGroup, Book, Document, JournalLine, Party, PostingEvent, ValueMovement
 from .services import ZERO, day, money, require
+from .tally_ledgers import PNL_SECTIONS
 from rest_framework.response import Response
 
 SECTIONS = [('sales','Sales accounts'),('cost_of_sales','Cost of goods sold'),('direct_expense','Direct expenses'),
@@ -11,12 +12,20 @@ SECTIONS = [('sales','Sales accounts'),('cost_of_sales','Cost of goods sold'),('
             ('unclassified_income','Unclassified income'),('unclassified_expense','Unclassified expenses')]
 
 
-def section_for(account):
+def section_for(account, groups):
     if account.code == '4100': return 'sales'
     if account.code == '5100': return 'cost_of_sales'
     allowed = {'sales','other_income'} if account.kind == 'income' else {'cost_of_sales','direct_expense','indirect_expense'}
     if account.pnl_section in allowed: return account.pnl_section
     if account.code == '4200' and account.kind == 'income': return 'other_income'
+    group = groups.get(account.group_id)
+    seen = set()
+    while group is not None and group.pk not in seen:
+        seen.add(group.pk)
+        section = PNL_SECTIONS.get(group.name)
+        if section in allowed:
+            return section
+        group = groups.get(group.parent_id)
     return 'unclassified_'+account.kind
 
 
@@ -57,13 +66,13 @@ def detailed_profit_loss(start, end, customer=None):
             if line.account.kind=='income':unassigned_income+=amount
             else:unassigned_expense+=amount
         if selected and (party is None or party.pk!=selected.pk):continue
-        section=section_for(line.account);totals[section]+=amount
+        section=section_for(line.account, groups);totals[section]+=amount
         row=accounts.setdefault(line.account_id,{'code':line.account_id,'name':line.account.name,'section':section,
             'group':group_path(line.account,groups),'amount':ZERO,'entries':[]})
         row['amount']+=amount
         original=line.document.reversal_of if line.document.reversal_of_id else line.document
         source=original.source or ''
-        payment=payment_types.get(source[len('invoice:'):]) if source.startswith('invoice:') else None
+        payment=(original.trade_payment if original.kind in {'invoice', 'bill'} else '') or (payment_types.get(source[len('invoice:'):]) if source.startswith('invoice:') else None)
         payment=payment if payment in {'cash','credit'} else 'unclassified'
         if section=='sales':split[payment]+=amount
         row['entries'].append({'line':line.pk,'document':line.document_id,'number':line.document.number,'date':str(line.document.date),
@@ -71,11 +80,18 @@ def detailed_profit_loss(start, end, customer=None):
             'category':line.document.cost_category.name if line.document.cost_category else 'Uncategorised',
             'customer':party.name if party else 'Company / unassigned','customerId':party.pk if party else None,
             'debit':str(line.debit),'credit':str(line.credit),'amount':str(amount),'currency':line.document.currency,
-            'fx':str(line.document.fx),'paymentType':payment if section=='sales' else ''})
+            'fx':str(line.document.fx),'paymentType': 'cash' if original.kind == 'expense' else payment})
+    if selected is None:
+        for account in Account.objects.filter(kind='expense', pnl_section='direct_expense',
+                                              name__iexact='Salary Advance'):
+            accounts.setdefault(account.pk, {
+                'code': account.pk, 'name': account.name, 'section': section_for(account, groups),
+                'group': group_path(account, groups), 'amount': ZERO, 'entries': [],
+            })
     sections=[]
     for key,label in SECTIONS:
         ledger_rows=[]
-        for row in sorted(accounts.values(),key=lambda r:(r['group'],r['code'])):
+        for row in sorted(accounts.values(),key=lambda r:(not r['entries'],r['group'],r['code'])):
             if row['section']==key:ledger_rows.append({**row,'amount':str(row['amount'])})
         group_totals=defaultdict(lambda:ZERO)
         for row in ledger_rows:group_totals[row['group']]+=Decimal(row['amount'])

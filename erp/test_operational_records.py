@@ -64,6 +64,49 @@ class OperationalRecordTests(APITestCase):
         self.assertEqual(saved['content']['dispatches'][0]['quantity'], 2)
         self.assertEqual(EntryRevision.objects.filter(entry_id='inventory-ledger').count(), 1)
 
+    def test_manual_carton_receipt_persists_pricing_only_when_weight_matches(self):
+        self.client.force_authenticate(self.users['admin'])
+        self.product.unit = 'kg'
+        self.product.save(update_fields=['unit'])
+        pricing = {'currency': 'USD', 'unitPrice': 4.5, 'priceBasis': 'kg',
+                   'cartons': 3, 'kgPerCarton': 2.125}
+        movement = {'id': 'manual-carton-receipt', 'productId': self.product.pk,
+                    'type': 'IN', 'unit': 'kg', 'date': self.today,
+                    'quantity': 6, 'reference': '', 'receiptPricing': pricing}
+        body = {'movements': [movement], 'allocations': [], 'dispatches': []}
+
+        result = self.put('inventory-ledger', body)
+        self.assertEqual(result.status_code, 400, result.data)
+        self.assertIn('must match the received quantity', str(result.data))
+        self.assertFalse(SharedEntry.objects.filter(pk='inventory-ledger').exists())
+
+        movement['quantity'] = 6.375
+        result = self.put('inventory-ledger', body)
+        self.assertEqual(result.status_code, 200, result.data)
+        saved = SharedEntry.objects.get(pk='inventory-ledger').content['movements'][0]
+        self.assertEqual(saved['quantity'], 6.375)
+        self.assertEqual(saved['receiptPricing'], pricing)
+
+    def test_priced_carton_stock_keeps_carton_quantity(self):
+        self.client.force_authenticate(self.users['admin'])
+        pricing = {'currency': 'UGX', 'unitPrice': 4500, 'priceBasis': 'kg',
+                   'cartons': 3, 'kgPerCarton': 10}
+        movement = {'id': 'manual-carton-receipt', 'productId': self.product.pk,
+                    'type': 'IN', 'unit': 'ctn', 'date': self.today,
+                    'quantity': 30, 'receiptPricing': pricing}
+        body = {'movements': [movement], 'allocations': [], 'dispatches': []}
+
+        result = self.put('inventory-ledger', body)
+        self.assertEqual(result.status_code, 400, result.data)
+        self.assertIn('Carton count must match', str(result.data))
+
+        movement['quantity'] = 3
+        result = self.put('inventory-ledger', body)
+        self.assertEqual(result.status_code, 200, result.data)
+        saved = SharedEntry.objects.get(pk='inventory-ledger').content['movements'][0]
+        self.assertEqual(saved['quantity'], 3)
+        self.assertEqual(saved['receiptPricing'], pricing)
+
     def test_stock_overdraw_mismatch_and_fake_receipts_are_rejected(self):
         for edit in ('overdraw', 'unit', 'missing-out', 'forged-purchase'):
             body = self.ledger(11 if edit == 'overdraw' else 2)
